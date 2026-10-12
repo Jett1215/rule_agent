@@ -1,0 +1,11 @@
+services:
+  backend:
+    ports:
+      - "127.0.0.1:5678:5678"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        uv pip install --python /app/.venv/bin/python debugpy &&
+        /app/.venv/bin/python -m debugpy --listen 0.0.0.0:5678 \
+          -m uvicorn agentchat.main:app --host 0.0.0.0 --port 7860

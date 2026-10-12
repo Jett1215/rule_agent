@@ -1,0 +1,111 @@
+import logging
+import warnings
+import redis.asyncio as aioredis
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from agentchat.auth import AuthJWT
+from agentchat.auth.exceptions import AuthJWTException
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+
+from agentchat.api.JWT import Settings as AuthJwtSettings
+from agentchat.mcp_proxy.session.manager import SessionManager
+from agentchat.middleware.trace_id_middleware import TraceIDMiddleware
+from agentchat.middleware.white_list_middleware import WhitelistMiddleware
+from agentchat.settings import init_app_settings
+from agentchat.settings import app_settings
+
+warnings.filterwarnings("ignore")
+logging.getLogger("chromadb").setLevel(logging.WARNING)
+
+async def register_router(app: FastAPI):
+    from agentchat.api.router import router
+
+    app.include_router(router)
+
+    # 健康探针
+    @app.get("/health")
+    def check_health():
+        return {'status': 'OK'}
+
+
+def register_middleware(app: FastAPI):
+    origins = [
+        '*',
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=False,
+        allow_methods=['*'],
+        allow_headers=['*'],
+    )
+
+    # Trace ID的中间件操作
+    app.add_middleware(TraceIDMiddleware)
+
+    # 注册白名单中间件
+    app.add_middleware(WhitelistMiddleware)
+
+    return app
+
+
+async def init_config():
+    await init_app_settings()
+
+    from agentchat.database.init_data import init_agentchat_system
+    await init_agentchat_system()
+
+def print_logo():
+    from pyfiglet import Figlet
+
+    f = Figlet(font="slant")
+    print(f.renderText("Agent Chat"))
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_config()
+
+    redis_client = aioredis.from_url(
+        app_settings.redis.get("endpoint"),
+        decode_responses=True
+    )
+    app.state.session_manager = SessionManager(redis_client)
+
+    await register_router(app)
+    print_logo()
+
+    yield
+
+    await redis_client.close()
+
+
+def create_app():
+    app = FastAPI(
+        title=app_settings.server.name,
+        version=app_settings.server.version,
+        lifespan=lifespan
+    )
+
+    app = register_middleware(app)
+
+    # 配置 AuthJWT
+    @AuthJWT.load_config
+    def get_config():
+        return AuthJwtSettings()
+
+    # 处理 AuthJWT 异常
+    @app.exception_handler(AuthJWTException)
+    def authjwt_exception_handler(request, exc):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.message}
+        )
+
+    return app
+
+app = create_app()
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("agentchat.main:app", host="0.0.0.0", port=7860)

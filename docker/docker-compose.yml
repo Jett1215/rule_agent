@@ -1,0 +1,142 @@
+
+# 🌐 网络配置
+networks:
+  agentchat-network:
+    driver: bridge
+
+services:
+  # MySQL数据库服务
+  mysql:
+    container_name: agentchat-mysql
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in docker/.env}
+      MYSQL_DATABASE: agentchat
+      MYSQL_USER: agentchat_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in docker/.env}
+      TZ: Asia/Shanghai
+    ports:
+     - "127.0.0.1:3307:3306" # 如果本机已经开放MySQL的端口号，就会docker的MySQL导致启动失败，直接注释即可， 下面redis 同理
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - agentchat-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Redis缓存服务
+  redis:
+    image: redis:7.0-alpine
+    container_name: agentchat-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - redis_data:/data
+    networks:
+      - agentchat-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 后端API服务
+  backend:
+    # Dockerfile 使用 linux64 Chrome/ChromeDriver，需要 x86_64 架构。
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: agentchat-backend
+    restart: unless-stopped
+    ports:
+      - "7860:7860"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - ./docker_config.yaml:/app/agentchat/config.yaml:ro
+      # ChromaDB 数据保留在宿主机，更新后端容器时继续使用。
+      - ./data/vector_db:/app/vector_db
+#      - ../src/backend:/app:cached
+#      - ../data:/app/data
+#      - ../logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - agentchat-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端开发服务
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    container_name: agentchat-frontend
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      NODE_ENV: development
+      # 浏览器使用同源 /api；由 Vite 在容器内代理到后端。
+      VITE_API_BASE_URL: ""
+      VITE_API_PROXY_TARGET: http://agentchat-backend:7860
+      TZ: Asia/Shanghai
+#    volumes:
+#      - ../src/frontend:/app:cached
+#      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - agentchat-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  minio:
+    container_name: agentchat-minio
+    image: quay.io/minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in docker/.env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in docker/.env}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in docker/.env}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in docker/.env}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/data/minio_data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    restart: unless-stopped
+    networks:
+      - agentchat-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+# 数据卷配置
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local

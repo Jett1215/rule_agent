@@ -1,0 +1,261 @@
+/* Shared visual language for management, editors, conversations and authentication. */
+:root {
+  --ui-font: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;
+  --ui-ink: #25262a;
+  --ui-secondary: #62666e;
+  --ui-muted: #888c93;
+  --ui-line: #e8e8eb;
+  --ui-surface: #f8f8f9;
+  --ui-send: #7fa5ef;
+  --el-font-family: var(--ui-font);
+  --el-font-size-base: 14px;
+  --el-color-primary: #25262a;
+  --el-color-primary-light-3: #62646b;
+  --el-color-primary-light-5: #94969c;
+  --el-color-primary-light-7: #c5c6ca;
+  --el-color-primary-light-8: #dedee1;
+  --el-color-primary-light-9: #f3f3f4;
+  --el-color-primary-dark-2: #17181b;
+  --el-text-color-primary: #303030;
+  --el-text-color-regular: #454950;
+  --el-text-color-secondary: #777b82;
+  --el-border-color: #e1e1e5;
+  --el-border-color-light: #ebebed;
+  --el-border-radius-base: 8px;
+  --el-box-shadow-light: 0 6px 24px rgba(23,24,27,.07);
+}
+
+/* Component controls and teleported popups share the same tokens. */
+body :is(.el-button, .el-input__inner, .el-textarea__inner, .el-select, .el-form-item__label, .el-dialog, .el-message-box, .el-dropdown-menu, .el-table) { font-family: var(--ui-font) !important; }
+body .el-button { font-size: 13px; font-weight: 500; border-radius: 8px; box-shadow: none; }
+body .el-button--primary:not(.is-plain):not(.is-text):not(.is-link) { background: var(--el-color-primary) !important; border-color: var(--el-color-primary) !important; color: #fff !important; }
+body .el-button--primary:not(.is-disabled):not(.is-plain):not(.is-text):not(.is-link):hover { background: #414349 !important; border-color: #414349 !important; }
+body .el-button.is-disabled { opacity: .5; }
+body :is(.el-input__wrapper, .el-select__wrapper) { background: #fff; border-radius: 8px; }
+body :is(.el-input__wrapper, .el-select__wrapper):hover { box-shadow: 0 0 0 1px #c6c7cc inset; }
+body :is(.el-input__wrapper.is-focus, .el-select__wrapper.is-focused) { box-shadow: 0 0 0 1px #8e929b inset !important; }
+body :is(.el-input__inner, .el-textarea__inner)::placeholder { color: #898d94; }
+body .el-tabs__item { font-weight: 400; }
+body .el-tabs__item.is-active { font-weight: 500; }
+body .el-tag--primary { background: #f3f3f4; border-color: #e6e6e9; color: #595d65; }
+body .el-dialog { padding: 24px; border: 1px solid var(--ui-line); border-radius: 14px; box-shadow: 0 20px 80px rgba(0,0,0,.14); }
+body .el-dialog__title { font-size: 18px; font-weight: 600; }
+body .el-dialog__header { padding-bottom: 18px; border-bottom: 1px solid var(--ui-line); }
+body .el-dialog__body { padding: 22px 0; color: var(--ui-secondary); }
+/* Legacy style.css hides overlays; restore dialogs and drawers to their normal flow. */
+body .el-overlay { display: block !important; background: rgba(24,25,28,.28) !important; }
+body .el-loading-mask.is-fullscreen { display: block !important; }
+body .el-message-box { border: 1px solid var(--ui-line); border-radius: 14px; }
+body .el-table { --el-table-header-bg-color: #f8f8f9; --el-table-row-hover-bg-color: #fafafa; --el-table-border-color: #ededee; }
+body .el-table th.el-table__cell { color: #7b7e85; font-size: 12px; font-weight: 500; }
+body .el-table td.el-table__cell { padding: 15px 0; font-size: 14px; }
+
+/* Common management shell and page headers. */
+#app .ai-body.platform-shell .ai-nav .brand-wordmark { font-family: var(--ui-font); }
+#app .management-content { background: #fff; }
+#app .management-content > :is(.agent-page, .mcp-server-page, .knowledge-page, .knowledge-file-page, .tool-page, .skill-page, .model-page, .model-editor-page, .profile-page, .dashboard-container, .agent-card) {
+  box-sizing: border-box; min-height: 100%; padding: 32px 36px 48px !important; background: #fff !important; color: var(--ui-ink); font-family: var(--ui-font) !important;
+}
+#app .management-content :is(.page-header, .dashboard-header, .profile-header) { padding: 0 0 24px !important; margin-bottom: 24px !important; background: transparent !important; border: 0 !important; border-bottom: 1px solid var(--ui-line) !important; border-radius: 0 !important; box-shadow: none !important; flex-wrap: wrap; gap: 18px; }
+#app .management-content :is(.header-title, .nav-title) { gap: 10px !important; }
+#app .management-content :is(.header-title h1, .header-title h2, .title-text, .dashboard-header h2, .profile-header h1) { color: var(--ui-ink) !important; background: none !important; -webkit-text-fill-color: currentColor !important; font-size: 22px !important; font-weight: 600 !important; letter-spacing: -.4px; text-shadow: none !important; }
+#app .management-content :is(.page-header, .profile-header, .dashboard-header)::before,
+#app .management-content :is(.page-header, .profile-header, .dashboard-header)::after { display: none !important; }
+#app .management-content .title-icon { width: 22px !important; height: 22px !important; padding: 0 !important; color: #424242 !important; background: transparent !important; box-shadow: none !important; border: 0 !important; filter: none !important; }
+#app .management-content .title-icon .el-icon { font-size: 22px !important; }
+#app .management-content :is(.header-actions, .action-buttons) { gap: 8px !important; }
+#app .management-content :is(.search-box, .search-input-wrapper) { border-radius: 8px !important; box-shadow: none !important; }
+#app .management-content :is(.page-header, .dashboard-header) p { color: var(--ui-secondary) !important; font-size: 13px !important; line-height: 1.6; }
+#app .management-content :is(h1,h2,h3,h4,button,input,select,textarea,label,span) { font-family: var(--ui-font) !important; }
+
+/* Resource tables and cards. */
+#app .management-content :is(.knowledge-container, .tool-container, .skill-container, .model-container, .server-list, .file-list, .file-table, .profile-card, .form-container, .chart-wrapper, .filters-container, .kpi-card) { background: #fff !important; border: 1px solid var(--ui-line) !important; border-radius: 12px !important; box-shadow: none !important; }
+#app .management-content .list-header { background: var(--ui-surface) !important; border-bottom: 1px solid var(--ui-line) !important; color: #777b82 !important; font-size: 12px !important; font-weight: 500 !important; padding-top: 13px !important; padding-bottom: 13px !important; }
+#app .management-content :is(.knowledge-row, .tool-row, .skill-row, .model-row, .file-row) { min-height: 70px; padding-top: 16px !important; padding-bottom: 16px !important; background: #fff !important; border-color: #ededee !important; box-shadow: none !important; transform: none !important; }
+#app .management-content :is(.knowledge-row, .tool-row, .skill-row, .model-row, .file-row):hover { background: #fafafa !important; }
+#app .management-content :is(.knowledge-name, .tool-name, .skill-name, .model-name, .file-name, .server-name .name, .agent-name) { color: #303030 !important; font-size: 14px !important; font-weight: 500 !important; line-height: 1.5; }
+#app .management-content :is(.knowledge-desc, .tool-desc, .skill-desc, .agent-description, .provider-name, .url-text) { color: #6f737b !important; font-size: 13px !important; font-weight: 400 !important; line-height: 1.65 !important; }
+#app .management-content :is(.time-text, .create-time, .size-text, .tools-count) { color: #878b92 !important; font-size: 12px !important; }
+#app .management-content :is(.knowledge-avatar, .tool-avatar, .skill-avatar, .file-icon-wrapper, .provider-avatar) { background: #f5f5f6 !important; border: 1px solid #eeeeef !important; border-radius: 8px !important; box-shadow: none !important; }
+#app .management-content :is(.official-tag, .official-badge, .file-badge, .type-badge, .option-badge, .section-badge, .size-tag, .type-tag) { color: #646870 !important; background: #f3f3f4 !important; border: 1px solid #e9e9eb !important; box-shadow: none !important; font-size: 11px !important; font-weight: 400 !important; }
+#app .management-content .agent-grid { gap: 16px !important; }
+#app .management-content :is(.agent-card, .agentCard, .historyCard) { background: #fff !important; border: 1px solid var(--ui-line) !important; border-radius: 12px !important; box-shadow: none !important; transform: none !important; }
+#app .management-content :is(.agent-card, .agentCard, .historyCard):hover { background: #fafafa !important; border-color: #cdced3 !important; box-shadow: none !important; transform: none !important; }
+#app .management-content :is(.agent-card, .agentCard)::before { display: none !important; }
+#app .management-content > .agent-card { border: 0 !important; border-radius: 0 !important; }
+#app .management-content > .agent-card .create { color: #303238 !important; background: #fafafa !important; border: 1px dashed #d4d5d9 !important; box-shadow: none !important; border-radius: 12px !important; }
+#app .management-content > .agent-card .create::before,
+#app .management-content > .agent-card .create::after { display: none !important; }
+#app .management-content :is(.meta-icon-img, .stat-icon, .section-icon, .panel-icon) { filter: grayscale(1); }
+#app .management-content :is(.action-btn, .ide-btn, .view-btn, .edit-btn, .refresh-btn):not(.primary-btn):not(.start-btn):not(.regenerate-btn) { background: #fff !important; color: #555961 !important; border: 1px solid #e7e7ea !important; border-radius: 7px !important; box-shadow: none !important; transform: none !important; }
+#app .management-content :is(.action-btn, .ide-btn, .view-btn, .edit-btn, .refresh-btn):hover { background: #f3f3f4 !important; border-color: #cfd0d5 !important; }
+#app .management-content :is(.delete-btn, .delete-icon):hover { color: #b53939 !important; background: #fff4f3 !important; }
+#app .management-content :is(.create-btn, .add-btn, .empty-btn, .primary-btn, .save-btn, .upload-btn-custom, .agent-card > .create) { color: #fff !important; background: #25262a !important; border-color: #25262a !important; border-radius: 8px !important; box-shadow: none !important; transform: none !important; }
+#app .management-content :is(.create-btn, .add-btn, .empty-btn, .primary-btn, .save-btn, .upload-btn-custom):hover { background: #414349 !important; }
+#app .management-content :is(.upload-btn-custom, .create-btn)::before,
+#app .management-content :is(.upload-btn-custom, .create-btn)::after { display: none !important; }
+
+/* Empty states are quiet and readable. */
+#app .management-content .empty-state { color: var(--ui-secondary) !important; background: transparent !important; box-shadow: none !important; }
+#app .management-content :is(.empty-icon, .empty-icon-wrapper, .empty-state-icon, .empty-visual) { color: #777b82 !important; background: #f6f6f7 !important; border: 0 !important; box-shadow: none !important; animation: none !important; filter: grayscale(1); }
+#app .management-content .empty-state .sidebar-line-icon { width: 32px; height: 32px; color: #747880; }
+#app .management-content .empty-state :is(h2,h3,.empty-text,.empty-state-text) { color: #3d3f44 !important; font-size: 16px !important; font-weight: 500 !important; }
+#app .management-content .empty-state :is(p,.empty-hint,.empty-state-hint) { color: #858991 !important; font-size: 13px !important; }
+
+/* Editors, file explorers and configuration panels. */
+#app .management-content :is(.agent-editor, .editor-body, .left-panel, .center-panel, .panel-content, .edit-form-section, .form-header, .config-section, .section-header, .basic-info-section) { background: #fff !important; border-color: var(--ui-line) !important; box-shadow: none !important; }
+#app .management-content :is(.panel-header, .form-header, .section-header) { border-color: var(--ui-line) !important; }
+#app .management-content :is(.panel-title, .form-title, .section-title) { color: #303238 !important; background: none !important; -webkit-text-fill-color: currentColor !important; font-size: 16px !important; font-weight: 500 !important; }
+#app .management-content :is(.field-label, .form-label, .form-item label, .drawer-label, .config-form label) { color: #555961 !important; font-size: 13px !important; font-weight: 500 !important; }
+#app .management-content :is(.form-input, .form-textarea, .drawer-input, .drawer-textarea) { color: #303238 !important; background: #fff !important; border: 1px solid #e0e0e4 !important; border-radius: 8px !important; box-shadow: none !important; font-size: 14px !important; }
+#app .management-content :is(.form-input, .form-textarea, .drawer-input, .drawer-textarea):focus { border-color: #9397a0 !important; outline: none; }
+#app .management-content :is(.prompt-editor, .prompt-editor-wrapper, .avatar-wrapper, .avatar-placeholder) { background: #fafafa !important; border-color: var(--ui-line) !important; box-shadow: none !important; }
+#app .management-content .config-form .el-select__prefix span { color: #777b82 !important; font-weight: 400 !important; }
+#app .management-content .config-form .el-select__prefix img { filter: grayscale(1); }
+#app .management-content .memory-toggle-btn { background: #f2f2f3 !important; border-color: #dddde1 !important; color: #646870 !important; }
+#app .management-content .memory-toggle-btn.active { background: #303238 !important; border-color: #303238 !important; color: #fff !important; }
+#app .management-content .form-icon { color: #555961 !important; background: #f3f3f4 !important; box-shadow: none !important; }
+#app .management-content .editor { padding: 28px; box-sizing: border-box; }
+#app .management-content .editor .editor-container { margin: 0 !important; border: 1px solid var(--ui-line); border-radius: 10px; overflow: hidden; }
+#app .management-content .editor .button { justify-content: flex-end !important; margin-top: 18px !important; }
+#app .management-content .editor .button .el-button { padding: 8px 18px !important; }
+
+/* Custom dialogs also render through Teleport, outside #app. */
+body :is(.modal-overlay, .dialog-overlay, .drawer-overlay, .custom-dialog-overlay, .create-dialog-overlay, .custom-confirm-dialog, .feedback-modal-overlay, .leave-modal-overlay, .delete-modal-overlay) { background: rgba(24,25,28,.28) !important; backdrop-filter: none !important; }
+body :is(.modal-dialog, .dialog-container, .delete-dialog-container, .confirm-dialog-content, .custom-dialog, .create-dialog, .feedback-modal, .leave-modal, .modal-content, .delete-modal) { background: #fff !important; color: var(--ui-ink); border: 1px solid var(--ui-line) !important; border-radius: 14px !important; box-shadow: 0 20px 70px rgba(23,24,27,.14) !important; font-family: var(--ui-font) !important; }
+body :is(.dialog-header, .modal-header, .custom-dialog-header, .drawer-header, .ide-header, .leave-modal-header) { background: #fff !important; border-color: var(--ui-line) !important; box-shadow: none !important; }
+body :is(.dialog-header, .modal-header, .custom-dialog-header, .drawer-header, .leave-modal-header) :is(h2,h3,.modal-title,.dialog-title,.drawer-title) { color: #25262a !important; font-size: 18px !important; font-weight: 600 !important; background: none !important; -webkit-text-fill-color: currentColor !important; }
+body :is(.dialog-footer, .modal-footer, .custom-dialog-footer, .drawer-footer, .leave-modal-footer) { background: #fafafa !important; border-color: var(--ui-line) !important; box-shadow: none !important; gap: 8px !important; }
+body :is(.btn-cancel, .cancel-btn, .cancel-button, .dialog-btn.cancel-btn, .drawer-footer-button-cancel, .delete-modal-button-cancel) { color: #555961 !important; background: #fff !important; border: 1px solid #dedee3 !important; border-radius: 8px !important; box-shadow: none !important; transform: none !important; }
+body :is(.btn-primary, .btn-confirm, .confirm-btn, .confirm-button, .dialog-btn.confirm-btn, .drawer-submit-btn, .drawer-footer-button-save, .drawer-footer-button-create, .dialog-footer .primary-btn) { color: #fff !important; background: #25262a !important; border: 1px solid #25262a !important; border-radius: 8px !important; box-shadow: none !important; transform: none !important; }
+body :is(.delete-dialog-btn.confirm-btn, .confirm-btn.danger, .delete-modal-button-confirm, .btn-danger) { background: #b53939 !important; border-color: #b53939 !important; color: #fff !important; border-radius: 8px !important; box-shadow: none !important; transform: none !important; }
+body .delete-modal-icon { width: 44px !important; height: 44px !important; background: #fff4f3 !important; color: #b53939 !important; box-shadow: none !important; border-radius: 10px !important; }
+body .delete-modal-icon svg { width: 24px; height: 24px; }
+body :is(.modal-dialog, .dialog-container, .custom-dialog, .create-dialog, .drawer-content) :is(input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea, select) { font-family: var(--ui-font) !important; color: #303238 !important; background: #fff !important; border-color: #dedee3 !important; border-radius: 8px !important; }
+body :is(.form-tip, .config-wizard, .wizard-header, .tools-overview, .tool-summary, .help-text, .feedback-tip, .current-selection) { background: #f7f7f8 !important; color: #686c74 !important; border-color: #e7e7ea !important; box-shadow: none !important; }
+body :is(.dialog-icon, .wizard-icon, .tool-icon, .tip-icon) { color: #62666e !important; background: #f3f3f4 !important; filter: grayscale(1); box-shadow: none !important; }
+body :is(.drawer-content, .ide-body, .ide-sidebar, .ide-header, .sidebar-header, .drawer-table-header) { background: #fff !important; border-color: var(--ui-line) !important; box-shadow: none !important; }
+body .drawer-body { background: #fff !important; }
+body :is(.drawer-footer, .drawer-form-group) :is(.drawer-create-btn, .drawer-save-btn) { background: #25262a !important; color: #fff !important; border-color: #25262a !important; box-shadow: none !important; }
+body :is(.custom-dialog, .agent-config-dialog) :is(.left-panel, .middle-panel, .right-panel, .section-header, .assistant-preview, .dialog-content) { background: #fff !important; color: #454950 !important; border-color: var(--ui-line) !important; box-shadow: none !important; }
+body :is(.custom-dialog, .agent-config-dialog) :is(.header-icon, .assistant-avatar) { filter: grayscale(1); }
+body .dialog-title-wrapper h3 { color: #25262a !important; font-size: 18px !important; font-weight: 600 !important; }
+body .dialog-header .dialog-title { color: #25262a !important; font-size: 18px !important; font-weight: 600 !important; }
+body :is(.dialog-icon img, .tab-icon, .file-icon, .folder-icon) { filter: grayscale(1); }
+body :is(.explorer-item.active, .ide-tab.active) { background: #ededee !important; color: #303238 !important; border-color: #cfd0d4 !important; }
+body .explorer-item:hover { background: #f4f4f5 !important; }
+body :is(.drawer-code-textarea, .monaco-editor, .monaco-editor *) { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace !important; }
+
+/* Conversation sidebar and message composer. */
+#app .platform-shell .ai-main > .workspace-content { min-width: 0; overflow: hidden; }
+#app .platform-shell .workspace-container { height: 100%; min-height: 0; overflow: hidden; }
+#app .platform-shell .workspace-container .workspace-main { display: flex; height: 100%; min-height: 0; }
+#app .platform-shell .workspace-container .workspace-main > .sidebar { position: static; flex: 0 0 260px; width: 260px; height: 100%; min-height: 0; padding-bottom: 0; }
+#app .platform-shell .workspace-container .workspace-main > .content { position: static; flex: 1; min-width: 0; height: 100%; overflow: hidden; }
+#app .platform-shell .workspace-container .create-section { padding: 20px 16px 16px; border-bottom: 1px solid var(--ui-line); }
+#app .platform-shell .workspace-container .create-btn-native { height: 48px; font-size: 14px !important; }
+#app .platform-shell .workspace-container .session-list { flex: 1; min-height: 0; overflow-y: auto; padding-top: 12px; }
+#app .management-content .conversation-main { background: #fff !important; }
+#app .management-content .conversation-main > .sidebar { width: 260px; min-width: 260px; background: #fcfcfd !important; border-right: 1px solid var(--ui-line) !important; box-shadow: none !important; }
+#app .management-content .conversation-main > .content { background: #fff !important; box-shadow: none !important; border-radius: 0 !important; }
+#app .management-content .conversation-main .create-btn-native { background: #fff !important; color: #303030 !important; border: 1px solid #e1e1e5 !important; border-radius: 9px !important; box-shadow: none !important; font-size: 14px !important; font-weight: 400 !important; transform: none !important; }
+#app .management-content .conversation-main .list-header { background: transparent !important; border: 0 !important; }
+#app .management-content .history-card { padding: 10px !important; margin: 0 0 2px !important; border: 0 !important; border-radius: 8px !important; background: transparent !important; box-shadow: none !important; transform: none !important; }
+#app .management-content .history-card.active,
+#app .management-content .history-card:hover { background: #eeeeef !important; }
+#app .management-content .history-card .title { color: #3d3d3d !important; font-size: 14px !important; font-weight: 400 !important; }
+#app .management-content .history-card .avatar { width: 26px !important; height: 26px !important; }
+#app .management-content .history-card .subtitle { color: #888c93 !important; font-size: 11px !important; }
+#app .management-content :is(.chat-container, .chat-conversation, .mcp-chat-container, .mcp-chat-container .main-content, .chat-messages, .input-area, .chat-input-wrapper) { background: #fff !important; border-color: var(--ui-line) !important; box-shadow: none !important; }
+#app .management-content :is(.chat-toolbar, .chat-input-container, .input-with-btn) { background: #fff !important; border-color: var(--ui-line) !important; box-shadow: none !important; }
+#app .management-content :is(.chat-conversation, .chat-messages) .message-group { max-width: 850px; margin-left: auto; margin-right: auto; }
+#app :is(.workspace-container, .management-content) :is(.user-message, .message-group.user) .message-content { background: #e8f2ff !important; color: #17365d !important; border: 0 !important; border-radius: 22px !important; padding: 12px 18px; line-height: 1.65; box-shadow: none !important; }
+#app .management-content :is(.ai-message, .message-group.assistant) .message-content { background: #fff !important; color: #303238 !important; box-shadow: none !important; border-color: #eeeef0 !important; }
+#app .management-content :is(.chat-container .input-wrapper, .input-with-btn) { border: 1px solid #e1e1e5 !important; border-radius: 16px !important; background: #fff !important; box-shadow: 0 6px 24px rgba(23,24,27,.05) !important; }
+#app .management-content :is(.message-input, .chat-input) { font-family: var(--ui-font) !important; color: #303238 !important; font-size: 14px !important; background: transparent !important; }
+#app .management-content :is(.message-input, .chat-input)::placeholder { color: #797d85 !important; }
+#app .management-content .send-btn { background: var(--ui-send) !important; color: #fff !important; border: 0 !important; border-radius: 50% !important; box-shadow: none !important; }
+#app .management-content .send-btn:hover:not(:disabled) { background: #6592e4 !important; }
+#app .management-content .send-btn:disabled { background: #bbcef5 !important; }
+#app .management-content .send-btn.pause-mode { background: #b53939 !important; }
+#app .management-content .message-input .el-textarea__inner { background: #fff !important; color: #303238 !important; border: 1px solid #e1e1e5 !important; box-shadow: none !important; }
+#app .management-content :is(.event-info-row, .event-item, .thinking-segment) { background: #fafafa !important; border-color: #e8e8eb !important; box-shadow: none !important; }
+#app .management-content .mcp-chat-container .sidebar { background: #fcfcfd !important; }
+#app .management-content .mcp-chat-container .task-item { border-color: #e8e8eb !important; background: #fff !important; box-shadow: none !important; }
+#app .management-content .mcp-chat-container .task-item.active { background: #eeeeef !important; }
+
+/* Dashboard, profile and output views. */
+#app .management-content .filters-container { padding: 18px !important; gap: 16px !important; flex-wrap: wrap; }
+#app .management-content .filter-group label { color: #6f737b !important; font-size: 12px !important; }
+#app .management-content :is(.kpi-card, .chart-wrapper) { transform: none !important; }
+#app .management-content .kpi-value { font-size: 30px !important; font-weight: 600 !important; color: #25262a !important; letter-spacing: -1px; }
+#app .management-content :is(.kpi-title, .kpi-desc) { color: #777b82 !important; }
+#app .management-content .kpi-icon { background: #f3f3f4 !important; color: #555961 !important; box-shadow: none !important; filter: grayscale(1); }
+#app .management-content .kpi-icon .sidebar-line-icon { width: 18px; height: 18px; }
+#app .management-content .chart-title { color: #454950 !important; font-size: 15px !important; font-weight: 500 !important; }
+#app .management-content .profile-content { max-width: 900px; margin-left: auto; margin-right: auto; }
+body .avatar-option.active { border-color: #777b82 !important; background: #f2f2f3 !important; }
+body .upload-button { color: #fff !important; background: #25262a !important; border-color: #25262a !important; border-radius: 8px !important; }
+#app .management-content :is(.profile-card, .description-section, .avatar-selection) { background: #fff !important; border-color: var(--ui-line) !important; box-shadow: none !important; }
+#app .management-content .user-basic-info h2 { color: #303238 !important; font-size: 22px !important; font-weight: 600 !important; }
+#app .management-content .user-id { color: #858991 !important; font-size: 12px !important; }
+#app .management-content :is(.mars-output-page, .mars-output-container, .mars-content, .mars-response) { background: #fff !important; color: #303238 !important; box-shadow: none !important; border-color: var(--ui-line) !important; }
+#app .management-content :is(.mars-back-btn, .mars-retry-btn) { color: #fff !important; background: #25262a !important; border-radius: 8px !important; box-shadow: none !important; transform: none !important; }
+
+/* Standalone workspace editor and task graph. Keep node status colours semantic. */
+#app :is(.workspace-chat-page, .task-graph-page) { --primary: #25262a; --primary-600: #414349; --primary-light: #f2f2f3; --border: #e8e8eb; --text: #303238; font-family: var(--ui-font) !important; color: #303238; background: #fff !important; }
+#app :is(.workspace-chat-page, .task-graph-page) :is(.column, .column-header, .editor-section, .editor-header, .history-header, .pane-header, .action-section, .legend-bar, .graph-wrapper, .editor-wrapper) { background: #fff !important; border-color: var(--ui-line) !important; box-shadow: none !important; }
+#app :is(.workspace-chat-page, .task-graph-page) :is(.column-header .header-title, .editor-title, .history-title) { color: #454950 !important; font-size: 14px !important; font-weight: 500 !important; }
+#app :is(.workspace-chat-page, .task-graph-page) :is(.header-icon, .editor-icon, .history-icon, .empty-icon, .btn-icon) { filter: grayscale(1); }
+#app :is(.workspace-chat-page, .task-graph-page) .empty-icon.sidebar-line-icon { width: 32px; height: 32px; color: #888c93; }
+#app :is(.workspace-chat-page, .task-graph-page) :is(.start-btn, .regenerate-btn) { border-radius: 8px !important; box-shadow: none !important; transform: none !important; font-size: 13px !important; }
+#app :is(.workspace-chat-page, .task-graph-page) .start-btn { background: #25262a !important; border-color: #25262a !important; color: #fff !important; }
+#app :is(.workspace-chat-page, .task-graph-page) .regenerate-btn { background: #fff !important; border: 1px solid #dedee3 !important; color: #555961 !important; }
+#app .task-graph-page .edge-path { stroke: #a5a8b0 !important; }
+#app .task-graph-page .node-rect { fill: #fff !important; stroke: #d9dadd; }
+#app .task-graph-page .mode-btn.active { background: #eeeeef !important; color: #303238 !important; border-color: #dedee3 !important; }
+#app .workspace-chat-page :is(.conversation-header, .message-header, .user-block) { background: #f8f8f9 !important; border-color: var(--ui-line) !important; }
+
+/* Authentication and missing-page views. */
+#app :is(.login-container, .register-container) { min-height: 100dvh; height: auto !important; background: #fff !important; font-family: var(--ui-font); }
+#app :is(.login-container, .register-container) .left-section { display: none !important; }
+#app :is(.login-container, .register-container) .right-section { width: 100% !important; flex: 1; min-height: 100dvh; padding: 40px 24px; box-sizing: border-box; background: #fff !important; }
+#app :is(.login-form-container, .register-form-container) { width: 100%; max-width: 380px !important; padding: 0 !important; background: #fff !important; box-shadow: none !important; border-radius: 0 !important; }
+#app :is(.login-container, .register-container) .logo-text { color: #25262a !important; background: none !important; -webkit-text-fill-color: currentColor !important; font-family: var(--ui-font) !important; font-size: 29px !important; font-weight: 600 !important; letter-spacing: -1px; }
+#app :is(.login-container, .register-container) .subtitle { color: #858991 !important; font-size: 13px !important; }
+#app :is(.login-container, .register-container) .el-input__wrapper { background: #fff !important; border-color: #dedee3 !important; border-radius: 8px !important; box-shadow: none !important; }
+#app :is(.login-container, .register-container) .el-input__wrapper.is-focus { border-color: #9397a0 !important; }
+#app :is(.login-container, .register-container) .form-label { color: #454950 !important; font-size: 13px !important; font-weight: 400 !important; }
+#app :is(.login-button, .register-button) { background: #25262a !important; color: #fff !important; border-radius: 8px !important; box-shadow: none !important; font-family: var(--ui-font) !important; font-size: 14px !important; }
+#app :is(.login-button, .register-button):hover { background: #414349 !important; transform: none !important; }
+#app :is(.login-container, .register-container) :is(.register-link, .login-link) { color: #454950 !important; font-size: 13px !important; }
+#app :is(.login-container, .register-container) :is(.version-badge, .icon-img) { filter: grayscale(1); }
+#app .notFound { background: #fff; color: #303238; flex-direction: column; gap: 18px; }
+#app .notFound .text { color: #303238; font-size: 20px; }
+#app .notFound img { display: none; }
+#app .notFound .error-code { color: #a2a5ac; font-size: 13px; letter-spacing: 2px; }
+#app .notFound .back-link { padding: 9px 18px; color: #fff; background: #25262a; border-radius: 8px; font-size: 13px; text-decoration: none; }
+
+/* Keep code typography distinct from interface text. */
+#app :is(.management-content, .workspace-chat-page, .task-graph-page) :is(pre, code, pre span, code span) { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace !important; }
+#app .management-content :is(.monaco-editor, .cm-editor) * { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace !important; }
+@media (max-width: 1000px) {
+  #app .platform-shell .workspace-container .workspace-main > .sidebar { width: 220px; flex-basis: 220px; }
+  #app .management-content > :is(.agent-page, .mcp-server-page, .knowledge-page, .knowledge-file-page, .tool-page, .skill-page, .model-page, .model-editor-page, .profile-page, .dashboard-container) { padding: 24px !important; }
+  #app .management-content .page-header { align-items: flex-start; }
+  #app .management-content .conversation-main > .sidebar { width: 220px; min-width: 220px; }
+}
+@media (max-width: 700px) {
+  #app .ai-body.platform-shell .ai-main .el-col-2 { width: 64px !important; min-width: 64px !important; max-width: 64px !important; flex-basis: 64px !important; }
+  #app .ai-body.platform-shell .sidebar-content :is(.el-menu-item span, .el-sub-menu__title span, .el-sub-menu__icon-arrow) { display: none; }
+  #app .ai-body.platform-shell .sidebar-content :is(.el-menu-item, .el-sub-menu__title) { margin: 3px 6px !important; padding: 0 15px !important; }
+  #app .management-content > :is(.agent-page, .mcp-server-page, .knowledge-page, .knowledge-file-page, .tool-page, .skill-page, .model-page, .model-editor-page, .profile-page, .dashboard-container) { padding: 20px 16px !important; }
+  #app .management-content :is(.knowledge-container, .tool-container, .skill-container, .model-container, .file-list) { overflow-x: auto; }
+  #app .management-content :is(.list-header, .knowledge-row, .tool-row, .skill-row, .model-row) { min-width: 650px; }
+  body :is(.modal-dialog, .dialog-container, .custom-dialog, .create-dialog) { max-width: calc(100vw - 32px) !important; box-sizing: border-box; }
+}
+@media (max-width: 600px) {
+  #app .platform-shell .workspace-container .workspace-main > .sidebar { width: 58px; flex-basis: 58px; }
+  #app .platform-shell .workspace-container .create-section { padding: 8px; }
+  #app .platform-shell .workspace-container .create-btn-native .btn-content > span:not(.icon) { display: none; }
+}
