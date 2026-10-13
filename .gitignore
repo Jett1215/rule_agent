@@ -6,6 +6,9 @@ __pycache__/
 
 chat.html
 
+# Original repository introductions kept only on this computer.
+/README*.local-backup.md
+
 # Private configuration: commit the .example templates instead.
 .env*
 !.env.example

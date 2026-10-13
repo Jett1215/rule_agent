@@ -3,6 +3,7 @@
 .vscode
 .claude
 .DS_Store
+README*.local-backup.md
 **/.env*
 docker/docker_config.yaml
 docker/docker_config.prod.yaml
