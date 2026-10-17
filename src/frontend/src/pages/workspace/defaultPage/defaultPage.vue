@@ -6,6 +6,8 @@ import { MdPreview } from "md-editor-v3"
 import "md-editor-v3/lib/style.css"
 import { getWorkspacePluginsAPI, workspaceSimpleChatStreamAPI, type McpToolEvent, type WorkSpaceSimpleTask } from '../../../apis/workspace'
 import { getVisibleLLMsAPI, type LLMResponse } from '../../../apis/llm'
+import { getMCPServersAPI, type MCPServer } from '../../../apis/mcp-server'
+import { generateSessionId } from '../../../utils/session-id'
 import { useUserStore } from '../../../store/user'
 
 const userStore = useUserStore()
@@ -23,7 +25,9 @@ const selectedModelId = ref<string>('')
 const selectedTools = ref<string[]>([])
 const showMcpSelector = ref(false)
 const selectedMcpServers = ref<string[]>([])
-const mcpServers = ref<any[]>([])
+const mcpServers = ref<MCPServer[]>([])
+const mcpServersLoading = ref(false)
+const mcpServersError = ref(false)
 const webSearchEnabled = ref(false)
 const toolDropdownRef = ref<HTMLElement | null>(null)
 const mcpDropdownRef = ref<HTMLElement | null>(null)
@@ -195,10 +199,30 @@ const toggleMcp = (serverId: string) => {
   }
 }
 
-// 生成UUID（模拟Python的uuid4().hex）
-const generateSessionId = (): string => {
-  // 使用crypto.randomUUID()生成UUID，然后移除横杠
-  return crypto.randomUUID().replace(/-/g, '')
+const fetchMcpServers = async () => {
+  if (mcpServersLoading.value) return
+  mcpServersLoading.value = true
+  mcpServersError.value = false
+  try {
+    const res = await getMCPServersAPI()
+    if (res.data.status_code !== 200 || !Array.isArray(res.data.data)) {
+      throw new Error('Invalid MCP server list response')
+    }
+    mcpServers.value = res.data.data
+    selectedMcpServers.value = selectedMcpServers.value.filter(id =>
+      mcpServers.value.some(server => server.mcp_server_id === id)
+    )
+  } catch (error) {
+    console.error('加载 MCP 服务器失败', error)
+    mcpServersError.value = true
+  } finally {
+    mcpServersLoading.value = false
+  }
+}
+
+const toggleMcpSelector = () => {
+  showMcpSelector.value = !showMcpSelector.value
+  if (showMcpSelector.value) fetchMcpServers()
 }
 
 // 自动滚动到底部
@@ -379,6 +403,7 @@ const loadSessionHistory = async (sessionId: string) => {
 onMounted(async () => {
   fetchPlugins()
   fetchModels()
+  fetchMcpServers()
   
   // 检查是否有 session_id 参数，如果有则加载会话历史
   const sessionId = route.query.session_id as string
@@ -392,17 +417,6 @@ onMounted(async () => {
     console.log('生成新会话ID:', currentSessionId.value)
   }
   
-  // 懒加载 MCP 列表（用于选择）
-  import('../../../apis/mcp-server').then(async ({ getMCPServersAPI }) => {
-    try {
-      const res = await getMCPServersAPI()
-      if (res.data && res.data.status_code === 200 && Array.isArray(res.data.data)) {
-        mcpServers.value = res.data.data
-      }
-    } catch (e) {
-      console.error('加载 MCP 服务器失败', e)
-    }
-  })
   document.addEventListener('click', handleClickOutside)
 })
 
@@ -660,7 +674,7 @@ watch(
               <div class="selector-dropdown" ref="mcpDropdownRef">
                 <div 
                   class="selector-item"
-                  @click="showMcpSelector = !showMcpSelector"
+                  @click="toggleMcpSelector"
                 >
                   <img src="../../../assets/mcp.svg" alt="MCP" class="selector-icon-img" />
                   <span class="selector-text">
@@ -675,11 +689,19 @@ watch(
                     <!-- 标题 -->
                     <div class="dropdown-header">
                       <span class="header-title">选择MCP服务器</span>
-                      <span class="header-count">{{ mcpServers.length }} 个可用</span>
+                      <span class="header-count">{{ mcpServersLoading ? '加载中…' : `${mcpServers.length} 个可用` }}</span>
                     </div>
 
                     <!-- 列表 -->
                     <div class="dropdown-list">
+                      <div v-if="mcpServersLoading" class="dropdown-empty">
+                        <span class="empty-text">正在加载MCP服务器…</span>
+                      </div>
+                      <div v-else-if="mcpServersError" class="dropdown-empty">
+                        <span class="empty-text">加载MCP服务器失败</span>
+                        <button class="clear-btn" @click.stop="fetchMcpServers">重试</button>
+                      </div>
+                      <template v-else>
                       <div v-if="mcpServers.length === 0" class="dropdown-empty">
                         <img src="../../../assets/mcp.svg" alt="MCP" class="empty-icon-img" />
                         <span class="empty-text">暂无可用MCP服务器</span>
@@ -711,6 +733,7 @@ watch(
                           <span class="item-check">✓</span>
                         </div>
                       </div>
+                      </template>
                     </div>
 
                     <!-- 底部操作栏 -->
