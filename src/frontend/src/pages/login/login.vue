@@ -104,7 +104,7 @@ const goToRegister = () => {
         <!-- Logo和标题 -->
         <div class="header">
           <div class="logo">
-            <span class="logo-text">AgentChat</span>
+            <span class="logo-text">AgentRuler</span>
           </div>
           <p class="subtitle">更智能、更多元的大模型应用开发平台</p>
         </div>
@@ -155,7 +155,7 @@ const goToRegister = () => {
 
         <!-- 底部版本信息 -->
         <div class="footer">
-          <div class="version-badge" title="AgentChat 版本">v2.5.0</div>
+          <div class="version-badge" title="AgentRuler 版本">v2.5.0</div>
           <div class="footer-icons">
             <a href="https://github.com/Shy2593666979/AgentChat" target="_blank" class="icon-link" title="GitHub">
               <img src="../../assets/github.png" alt="GitHub" class="icon-img" />

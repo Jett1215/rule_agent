@@ -66,7 +66,7 @@ RUN uv sync --frozen
 COPY src/backend/ ./
 
 # 镜像只包含脱敏模板；实际配置由 Compose 在运行时只读挂载。
-COPY docker/docker_config.example.yaml /app/agentchat/config.yaml
+COPY docker/docker_config.example.yaml /app/agentruler/config.yaml
 
 # 环境变量
 ENV PYTHONPATH=/app
@@ -77,4 +77,4 @@ ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 7860
 
 # 启动服务
-CMD ["uvicorn", "agentchat.main:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["uvicorn", "agentruler.main:app", "--host", "0.0.0.0", "--port", "7860"]

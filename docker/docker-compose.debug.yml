@@ -8,4 +8,4 @@ services:
       - |
         uv pip install --python /app/.venv/bin/python debugpy &&
         /app/.venv/bin/python -m debugpy --listen 0.0.0.0:5678 \
-          -m uvicorn agentchat.main:app --host 0.0.0.0 --port 7860
+          -m uvicorn agentruler.main:app --host 0.0.0.0 --port 7860

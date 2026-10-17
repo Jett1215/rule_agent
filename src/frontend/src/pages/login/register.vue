@@ -107,7 +107,7 @@ const goToLogin = () => {
         <!-- Logo和标题 -->
         <div class="header">
           <div class="logo">
-            <span class="logo-text">AgentChat</span>
+            <span class="logo-text">AgentRuler</span>
           </div>
           <p class="subtitle">创建您的账户，开始智能对话之旅</p>
         </div>
@@ -182,7 +182,7 @@ const goToLogin = () => {
 
         <!-- 底部版本信息 -->
         <div class="footer">
-          <div class="version-badge" title="AgentChat 版本">v2.5.0</div>
+          <div class="version-badge" title="AgentRuler 版本">v2.5.0</div>
           <div class="footer-icons">
             <a href="https://github.com/Shy2593666979/AgentChat" target="_blank" class="icon-link" title="GitHub">
               <img src="../../assets/github.png" alt="GitHub" class="icon-img" />

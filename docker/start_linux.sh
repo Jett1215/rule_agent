@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 🚀 AgentChat Docker 启动脚本
+# 🚀 AgentRuler Docker 启动脚本
 # 快速启动所有服务
 
 set -e
@@ -12,7 +12,7 @@ if [[ ! -f docker_config.yaml || ! -f .env ]]; then
     exit 1
 fi
 
-echo "🐳 启动 AgentChat Docker 服务..."
+echo "🐳 启动 AgentRuler Docker 服务..."
 
 # 创建必要的目录
 echo "📁 创建数据目录..."
@@ -31,7 +31,7 @@ echo "📊 检查服务状态..."
 docker compose ps
 
 echo ""
-echo "✅ AgentChat 启动完成！"
+echo "✅ AgentRuler 启动完成！"
 echo ""
 echo "🌐 访问地址："
 echo "  前端界面: http://localhost:8090"

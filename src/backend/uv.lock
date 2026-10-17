@@ -14,7 +14,7 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "agentchat"
+name = "agentruler"
 version = "2.5.0"
 source = { virtual = "." }
 dependencies = [

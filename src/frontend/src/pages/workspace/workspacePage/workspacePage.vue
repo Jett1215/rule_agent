@@ -480,7 +480,7 @@ const handleStartTask = () => {
         <div class="editor-header">
           <div class="header-left">
             <span class="editor-icon">📝</span>
-            <span class="editor-title">智言指导手册</span>
+            <span class="editor-title">智治指导手册</span>
           </div>
           <div class="header-right">
             <span v-if="isStreaming" class="streaming-indicator">

@@ -1,0 +1,27 @@
+FROM public.ecr.aws/docker/library/python:3.12-slim
+
+# Chromium supports screenshot/news tools without downloading Chrome separately.
+# Pandoc is sufficient for the Markdown-to-Word conversion used by the app.
+RUN sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+       curl ca-certificates pandoc chromium chromium-driver fonts-noto-cjk \
+       libgl1 libglib2.0-0 \
+    && ln -s /usr/bin/chromium /usr/bin/google-chrome \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+RUN pip install --no-cache-dir uv --index-url https://mirrors.aliyun.com/pypi/simple/
+COPY src/backend/pyproject.toml src/backend/uv.lock ./
+ENV UV_HTTP_TIMEOUT=120 UV_CONCURRENT_DOWNLOADS=4 UV_CONCURRENT_INSTALLS=1
+RUN uv export --frozen --no-dev --no-emit-project --output-file /tmp/requirements.lock \
+    && uv venv /app/.venv \
+    && uv pip install --python /app/.venv/bin/python --require-hashes \
+       --index-url https://mirrors.aliyun.com/pypi/simple/ \
+       --no-cache -r /tmp/requirements.lock
+COPY src/backend/ ./
+COPY docker/docker_config.example.yaml /app/agentruler/config.yaml
+ENV PYTHONPATH=/app PYTHONUNBUFFERED=1 PATH="/app/.venv/bin:$PATH" \
+    OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 ANONYMIZED_TELEMETRY=False
+EXPOSE 7860
+CMD ["uvicorn", "agentruler.main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1"]

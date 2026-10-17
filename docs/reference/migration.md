@@ -1,10 +1,10 @@
-# AgentChat v2.2.0 迁移指南
+# AgentRuler v2.2.0 迁移指南
 
 > **从 LangChain 0.x 升级到 LangChain 1.0+ 的完整迁移指南**
 
 ## 📋 概述
 
-AgentChat v2.2.0 是一个重大版本更新，主要变更是将 LangChain 从 0.x 版本升级到 1.0+ 版本。LangChain 1.0 引入了**革命性的架构变更**：
+AgentRuler v2.2.0 是一个重大版本更新，主要变更是将 LangChain 从 0.x 版本升级到 1.0+ 版本。LangChain 1.0 引入了**革命性的架构变更**：
 
 - 🔄 **全新的 Agent 系统**: 从 `initialize_agent` 完全迁移到 `create_agent`
 - 🛠️ **工具系统重构**: 使用 `@tool` 装饰器和新的工具定义方式
@@ -341,12 +341,12 @@ for chunk in agent.stream({
 
 ---
 
-## 🛠️ AgentChat 特定变更
+## 🛠️ AgentRuler 特定变更
 
 ### 1. **MCP 集成更新**
 
 #### 文件位置
-- `src/backend/agentchat/services/mcp_openai/mcp_langchain.py`
+- `src/backend/agentruler/services/mcp_openai/mcp_langchain.py`
 
 #### 变更前
 ```python
@@ -404,7 +404,7 @@ class MCPTool(BaseTool):
 ### 2. **Mars Agent 更新**
 
 #### 文件位置
-- `src/backend/agentchat/services/mars/mars_agent.py`
+- `src/backend/agentruler/services/mars/mars_agent.py`
 
 #### 变更前
 ```python
@@ -490,7 +490,7 @@ class MarsAgent:
 ### 3. **RAG 系统更新**
 
 #### 文件位置
-- `src/backend/agentchat/services/rag/`
+- `src/backend/agentruler/services/rag/`
 
 #### 变更前
 ```python
@@ -512,7 +512,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 ### 4. **工具系统统一更新**
 
 #### 文件位置
-- `src/backend/agentchat/tools/`
+- `src/backend/agentruler/tools/`
 
 #### 变更前
 ```python
@@ -628,7 +628,7 @@ python -m pytest tests/test_tools.py
 ```bash
 # 启动服务
 cd src/backend
-uvicorn agentchat.main:app --port 7860
+uvicorn agentruler.main:app --port 7860
 
 # 测试 API 接口
 curl -X POST "http://localhost:7860/api/v1/chat" \
@@ -705,8 +705,8 @@ result = agent.invoke({
 - [LangChain GitHub Issues](https://github.com/langchain-ai/langchain/issues)
 - [LangChain Discord 社区](https://discord.gg/langchain)
 
-### AgentChat 相关
-- [AgentChat 技术文档](agentchat.md)
+### AgentRuler 相关
+- [AgentRuler 技术文档](agentruler.md)
 - [API 文档](api.md)
 - [核心功能文档](core.md)
 

@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-echo Starting AgentChat Docker services...
+echo Starting AgentRuler Docker services...
 
 REM Create directories
 echo Creating directories...
@@ -20,7 +20,7 @@ echo Checking service status...
 docker compose ps
 
 echo.
-echo AgentChat started successfully!
+echo AgentRuler started successfully!
 echo.
 echo Access URLs:
 echo Frontend: http://localhost:8090

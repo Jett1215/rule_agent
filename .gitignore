@@ -14,6 +14,8 @@ chat.html
 !.env.example
 /docker/docker_config.yaml
 /docker/docker_config.prod.yaml
+/src/backend/agentruler/config.yaml
+# Protect private configs left behind when upgrading an older checkout.
 /src/backend/agentchat/config.yaml
 *.local.yaml
 *.local.yml

@@ -1,8 +1,8 @@
-# AgentChat 后端技术文档
+# AgentRuler 后端技术文档
 
 ## 技术架构
 
-AgentChat 后端采用 FastAPI 异步框架构建，基于 Python 3.12+，支持多 Agent 协作、知识库检索（RAG）、工具调用和 MCP 协议集成。
+AgentRuler 后端采用 FastAPI 异步框架构建，基于 Python 3.12+，支持多 Agent 协作、知识库检索（RAG）、工具调用和 MCP 协议集成。
 
 ### 核心技术栈
 
@@ -24,7 +24,7 @@ AgentChat 后端采用 FastAPI 异步框架构建，基于 Python 3.12+，支持
 ## 项目结构
 
 ```
-agentchat/
+agentruler/
 ├── main.py              # FastAPI 应用入口
 ├── settings.py          # 配置加载（YAML → Pydantic）
 ├── config.yaml          # 统一配置文件
@@ -171,7 +171,7 @@ server:
   env: "dev"           # prod / test / dev
   host: "127.0.0.1"
   port: 7860
-  name: "AgentChat"
+  name: "AgentRuler"
   version: "2.5.0"
 ```
 
@@ -276,7 +276,7 @@ python scripts/fix_fastapi_jwt_auth.py
 
 ```bash
 cd src/backend
-uvicorn agentchat.main:app --port 7860 --host 0.0.0.0
+uvicorn agentruler.main:app --port 7860 --host 0.0.0.0
 ```
 
 ### 6. 访问 API 文档

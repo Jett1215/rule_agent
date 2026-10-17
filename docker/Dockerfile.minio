@@ -1,0 +1,13 @@
+FROM public.ecr.aws/docker/library/golang:1.24-alpine AS build
+ARG MINIO_RELEASE=RELEASE.2025-09-06T17-38-46Z
+ENV CGO_ENABLED=0 GOMEMLIMIT=384MiB GOMAXPROCS=2 GOFLAGS=-p=1 \
+    GOPROXY=https://goproxy.cn,direct GOTOOLCHAIN=local
+WORKDIR /src
+RUN wget -qO /tmp/minio.tar.gz "https://codeload.github.com/minio/minio/tar.gz/refs/tags/${MINIO_RELEASE}" \
+    && tar -xzf /tmp/minio.tar.gz --strip-components=1 \
+    && go build -trimpath -ldflags '-s -w' -o /out/minio .
+
+FROM public.ecr.aws/docker/library/python:3.12-slim
+COPY --from=build /out/minio /usr/local/bin/minio
+EXPOSE 9000 9001
+ENTRYPOINT ["minio"]

@@ -1,0 +1,109 @@
+# 保留已有 Compose 项目标识，继续使用原 MySQL / Redis 数据卷。
+name: rule-agent
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  mysql:
+    image: public.ecr.aws/docker/library/mysql:8.0
+    restart: unless-stopped
+    mem_limit: 384m
+    memswap_limit: 768m
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: agentchat
+      MYSQL_USER: agentchat_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    command:
+      - --innodb-buffer-pool-size=64M
+      - --performance-schema=OFF
+      - --max-connections=40
+      - --table-open-cache=400
+      - --key-buffer-size=8M
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    logging: *logging
+
+  redis:
+    image: public.ecr.aws/docker/library/redis:7-alpine
+    restart: unless-stopped
+    mem_limit: 96m
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "48mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+
+  minio:
+    image: agentruler-minio:RELEASE.2025-09-06T17-38-46Z
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.minio
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 512m
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+      TZ: Asia/Shanghai
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - ./data/minio_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000/minio/health/live', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  backend:
+    image: agentruler-backend:production
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.production
+    restart: unless-stopped
+    mem_limit: 768m
+    memswap_limit: 1536m
+    environment:
+      TZ: Asia/Shanghai
+      AUTHJWT_SECRET_KEY: ${AUTHJWT_SECRET_KEY:?Set AUTHJWT_SECRET_KEY}
+    ports:
+      - "127.0.0.1:7860:7860"
+    volumes:
+      - ./docker_config.prod.yaml:/app/agentruler/config.yaml:ro
+      - ./data/vector_db:/app/vector_db
+      - ./data/memory_db:/app/memory_db
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 180s
+      retries: 5
+    logging: *logging
+
+volumes:
+  mysql_data:
+  redis_data:

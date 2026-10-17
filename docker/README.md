@@ -1,6 +1,6 @@
-# 🐳 AgentChat Docker 部署指南
+# 🐳 AgentRuler Docker 部署指南
 
-> 🚀 **一键部署 AgentChat** - 完整的容器化解决方案
+> 🚀 **一键部署 AgentRuler** - 完整的容器化解决方案
 
 ## 📋 目录
 
@@ -218,7 +218,7 @@ docker-compose up -d mysql redis
 docker stats
 
 # 查看特定容器统计
-docker stats agentchat-backend agentchat-frontend
+docker stats agentruler-backend agentruler-frontend
 ```
 
 ---
@@ -281,7 +281,7 @@ docker-compose up -d mysql
 
 ```bash
 # 检查配置文件
-cat ../src/backend/agentchat/config.yaml
+cat ../src/backend/agentruler/config.yaml
 
 # 修改挂载的 Docker 配置文件
 vim docker_config.yaml
@@ -389,7 +389,7 @@ docker run -it --rm \
 
 <div align="center">
 
-**🐳 愉快地使用 Docker 部署 AgentChat！**
+**🐳 愉快地使用 Docker 部署 AgentRuler！**
 
 *如有问题，请查看日志或联系维护者*
 

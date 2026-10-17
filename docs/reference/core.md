@@ -1,8 +1,8 @@
-# AgentChat 核心架构技术文档
+# AgentRuler 核心架构技术文档
 
 ## 概述
 
-AgentChat 核心架构是整个系统的基础框架，提供了智能代理、模型管理、回调处理等核心功能。本文档详细介绍了核心架构的设计理念、组件功能和使用方法，为开发者和系统集成商提供全面的技术参考。
+AgentRuler 核心架构是整个系统的基础框架，提供了智能代理、模型管理、回调处理等核心功能。本文档详细介绍了核心架构的设计理念、组件功能和使用方法，为开发者和系统集成商提供全面的技术参考。
 
 ## 目录
 
@@ -18,7 +18,7 @@ AgentChat 核心架构是整个系统的基础框架，提供了智能代理、�
 
 ### 代理类型概览
 
-AgentChat 提供了多种类型的智能代理，每种代理都针对特定的使用场景进行了优化：
+AgentRuler 提供了多种类型的智能代理，每种代理都针对特定的使用场景进行了优化：
 
 - **ReactAgent**: 基于推理-行动循环的通用代理
 - **CodeActAgent**: 专门用于代码生成和执行的代理
@@ -371,7 +371,7 @@ class UsageMetadataCallbackHandler(BaseCallbackHandler):
 
 **使用方式**
 ```python
-from agentchat.core.callbacks import usage_metadata_callback
+from agentruler.core.callbacks import usage_metadata_callback
 
 # 在模型调用时添加回调
 response = await model.ainvoke(
@@ -592,7 +592,7 @@ mcp_config = await MCPUserConfigService.get_mcp_user_config(
 
 ## 总结
 
-AgentChat 核心架构通过模块化设计、异步优先、流式处理和可扩展性等设计原则，构建了一个功能强大、性能优异的智能对话系统基础框架。
+AgentRuler 核心架构通过模块化设计、异步优先、流式处理和可扩展性等设计原则，构建了一个功能强大、性能优异的智能对话系统基础框架。
 
 **核心优势**
 1. **多样化代理**: 提供多种专用代理满足不同需求

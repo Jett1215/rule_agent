@@ -6,11 +6,11 @@ import glob
 import platform
 
 # --- 路径设置 ---
-# SCRIPT_DIR: .../AgentChat/scripts
+# SCRIPT_DIR: .../AgentRuler/scripts
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# PROJECT_ROOT: .../AgentChat (项目根目录)
+# PROJECT_ROOT: .../AgentRuler (项目根目录)
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-# BASE_DIR: .../AgentChat/src
+# BASE_DIR: .../AgentRuler/src
 BASE_DIR = os.path.join(PROJECT_ROOT, "src")
 
 BACKEND_DIR = os.path.join(BASE_DIR, "backend")
@@ -63,7 +63,7 @@ def start_services():
             return
 
         backend_process = subprocess.Popen(
-            ["uvicorn", "agentchat.main:app", "--port", "7860"],
+            ["uvicorn", "agentruler.main:app", "--port", "7860"],
             cwd=BACKEND_DIR,  # 保持在 /src/backend 运行
             shell=False
         )

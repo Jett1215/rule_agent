@@ -4,7 +4,7 @@ server:
   env: "dev" # prod / test / dev
   host: "127.0.0.1"
   port: 7860
-  name: "AgentChat" # 项目名称
+  name: "AgentRuler" # 项目名称
   version: "2.5.0" # 服务版本号
 
 # 数据库配置：MySQL (请根据实际配置更改 endpoint)
@@ -136,7 +136,7 @@ wechat_config:
 
 # 追踪工具 Langfuse 配置 (目前版本可能未应用)
 langfuse:
-  trace_name: "agentchat"
+  trace_name: "agentruler"
   host: "https://cloud.langfuse.com"
   public_key: "CHANGE_ME_PUBLIC_KEY"
   secret_key: "CHANGE_ME_SECRET_KEY"

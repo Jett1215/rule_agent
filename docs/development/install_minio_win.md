@@ -42,12 +42,12 @@ setx MINIO_ROOT_USER=admin
 setx MINIO_ROOT_PASSWORD=admin123
 ```
 
-修改完成之后也需要在agentchat中的config.yaml中需要修改对应的access 值
+修改完成之后也需要在agentruler中的config.yaml中需要修改对应的access 值
 
 ## 二、修改Bucket权限
 
 ### 新版本（2025.6后）
-现在算是将MiniO正常的部署到本机了，下面只需一步就大功告成，就是将agentchat的bucket权限全部放出来
+现在算是将MiniO正常的部署到本机了，下面只需一步就大功告成，就是将agentruler的bucket权限全部放出来
 
 打开浏览器（需要保证minio 服务是启动中）
 ```

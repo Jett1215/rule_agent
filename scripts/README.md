@@ -1,6 +1,6 @@
-# 🚀 AgentChat 快速启动指南
+# 🚀 AgentRuler 快速启动指南
 
-本指南将帮助你使用自动化脚本一键启动 AgentChat 的前后端服务。
+本指南将帮助你使用自动化脚本一键启动 AgentRuler 的前后端服务。
 
 ## 📋 前置要求
 
@@ -15,12 +15,12 @@
 为了确保脚本能正常工作，请确认你的项目目录结构如下所示：
 
 ```text
-AgentChat/             (项目根目录)
+AgentRuler/             (项目根目录)
 ├── requestment.txt    <-- Python依赖文件 (跟 src 并列)
 ├── scripts/
 │   └── start.py       <-- 启动脚本在这里
 └── src/
-    ├── backend/       <-- 后端代码目录 (包含 agentchat/main.py)
+    ├── backend/       <-- 后端代码目录 (包含 agentruler/main.py)
     └── frontend/      <-- 前端代码目录 (包含 package.json)
 
 ## ⚡️ 如何运行
@@ -30,7 +30,7 @@ AgentChat/             (项目根目录)
 *(如果你已经在 `(py-langchain1.0)` 这种环境下，请跳过此步)*
 
 ### 2. 执行启动脚本
-确保你当前处于项目根目录（例如 `AgentChat`），然后运行以下命令：
+确保你当前处于项目根目录（例如 `AgentRuler`），然后运行以下命令：
 
 ```bash
 python scripts/start.py

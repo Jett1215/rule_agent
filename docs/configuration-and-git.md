@@ -3,6 +3,9 @@
 此版本基于 [AgentChat](https://github.com/Shy2593666979/AgentChat)，保留原项目的
 [MIT 许可证及版权声明](../LICENSE)。
 
+项目现名为 **AgentRuler（智治）**。从旧版本升级时，先阅读
+[名称变更说明](renaming.md)，确认后端包路径和现有数据配置。
+
 ## 仓库与本机文件
 
 仓库提交源代码、依赖锁文件、测试、部署脚本和脱敏配置模板。
@@ -10,7 +13,7 @@
 
 | 场景 | 提交的模板 | 本机配置，不提交 |
 | --- | --- | --- |
-| 本地 Python 后端 | `src/backend/agentchat/config.example.yaml` | `src/backend/agentchat/config.yaml` |
+| 本地 Python 后端 | `src/backend/agentruler/config.example.yaml` | `src/backend/agentruler/config.yaml` |
 | Docker 后端 | `docker/docker_config.example.yaml` | `docker/docker_config.yaml` |
 | Docker 数据库与存储凭据 | `docker/.env.example` | `docker/.env` |
 
@@ -40,13 +43,13 @@ docker compose -f docker/docker-compose.yml up -d --build
 ```
 
 镜像只包含脱敏模板，真实 Docker 配置在容器启动时只读挂载到
-`/app/agentchat/config.yaml`。修改 YAML 后重启后端即可读取新配置；修改代码时仍需
+`/app/agentruler/config.yaml`。修改 YAML 后重启后端即可读取新配置；修改代码时仍需
 重新构建镜像。已有数据库的数据卷不会因为编辑 `.env` 自动更改数据库账号密码。
 
 ## 本地 Python 后端
 
 ```bash
-cp src/backend/agentchat/config.example.yaml src/backend/agentchat/config.yaml
+cp src/backend/agentruler/config.example.yaml src/backend/agentruler/config.yaml
 ```
 
 填写本机服务地址和密钥后，按原项目步骤从 `src/backend` 启动后端。

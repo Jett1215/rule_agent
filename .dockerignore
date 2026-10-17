@@ -7,6 +7,7 @@ README*.local-backup.md
 **/.env*
 docker/docker_config.yaml
 docker/docker_config.prod.yaml
+src/backend/agentruler/config.yaml
 src/backend/agentchat/config.yaml
 **/*.local.yaml
 **/*.local.yml

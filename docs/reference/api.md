@@ -1,8 +1,8 @@
 
 
-# AgentChat API 文档 v1.0
+# AgentRuler API 文档 v1.0
 
-本文档整理了 AgentChat 系统 v1 版本的所有 API 接口，包含接口 URL、请求方法、请求参数和返回参数。
+本文档整理了 AgentRuler 系统 v1 版本的所有 API 接口，包含接口 URL、请求方法、请求参数和返回参数。
 
 ## 目录
 - [对话相关 API](#对话相关-api)

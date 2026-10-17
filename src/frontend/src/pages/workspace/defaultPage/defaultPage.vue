@@ -438,11 +438,11 @@ watch(
       <!-- 欢迎区域（有对话时隐藏） -->
       <div v-if="messages.length === 0" class="welcome-section">
         <div class="avatar-wrapper">
-          <img src="../../../assets/robot.svg" alt="智言" class="avatar" />
+          <img src="../../../assets/robot.svg" alt="智治" class="avatar" />
         </div>
         <h1 class="welcome-title">今天想做些什么？</h1>
         <p class="welcome-subtitle">
-          输入你的问题，智言会帮你逐步完成。
+          输入你的问题，智治会帮你逐步完成。
         </p>
       </div>
 

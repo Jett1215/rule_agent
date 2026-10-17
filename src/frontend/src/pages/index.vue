@@ -24,7 +24,7 @@ const agentCardStore = useAgentCardStore()
 const userStore = useUserStore()
 const route = useRoute()
 const router = useRouter()
-const itemName = ref("智言平台")
+const itemName = ref("智治平台")
 const showAppCenterMenu = ref(false)
 let appCenterHoverTimer: any = null
 
@@ -183,7 +183,7 @@ watch(
           <img :src="robotIcon" alt="Logo" class="logo" />
         </div>
         <div class="nav-links">
-          <span class="brand-wordmark">智言平台</span>
+          <span class="brand-wordmark">智治平台</span>
         </div>
       </div>
       <div class="right">
