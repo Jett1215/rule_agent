@@ -18,7 +18,4 @@ AgentRuler（智治）是基于 AgentChat 二次开发的智能体应用平台�
 
 配置方法见 [配置说明](docs/configuration-and-git.md)。真实密钥和本地数据不提交到仓库。
 
-项目英文名为 **AgentRuler**，中文名为 **智治**，后端 Python 包名为 `agentruler`。
 已有部署升级时，请参照 [名称变更说明](docs/renaming.md) 保留数据库、存储桶及数据卷配置。
-
-本项目基于 [AgentChat](https://github.com/Shy2593666979/AgentChat)，保留原项目的 [MIT 许可证](LICENSE)。
