@@ -2,9 +2,27 @@
 
 本页保留历史部署背景，并给出当前仓库的部署、备份、恢复及回滚操作草案。工程规则见 [AGENTS.md](../AGENTS.md)，相关入口见 [文档索引](README.md) 和 [Docker 指南](../docker/README.md)。
 
-截至 2026-10-21，本轮仅静态核对仓库；未访问云端、执行发布、备份、恢复、证书操作或演练。本文操作步骤均为 `NOT_RUN`，实际云端版本和配置待运维核实。
+2026-10-21 文档整理时仅静态核对仓库。2026-10-27 已按用户授权完成一次应用发布，实际连接、版本和备份范围见下文及[生产发布验证](verification-report.md#2026-10-27-生产发布)。通用恢复、回滚和证书操作仍为草案，没有通过本次发布完成演练。
 
 ## 历史记录与当前代码
+
+### 已验证的服务器连接（2026-10-27）
+
+用户确认的生产服务器为 `121.40.185.246`，SSH 用户为 `root`，端口为 `22`。本次已使用维护者本机已有的 `~/.ssh/agentruler_deploy` 密钥成功登录，并确认项目目录为 `/opt/rule_agent`。仅记录连接参数与密钥路径，不保存密码或私钥内容。
+
+```bash
+ssh -i ~/.ssh/agentruler_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -p 22 root@121.40.185.246
+```
+
+该命令要求本机已有对应私钥和已核验的主机指纹；其他维护者应使用自己的获授权凭据。首次核实时服务器源码提交为 `df53c301cce956aa1d7ac5c2df3624dd94238170`，本次已更新为 `08f9b23bb50338a6403c6929d436a047eaff43f5`。这些是本次核实的快照，未来操作仍需重新检查运行状态。
+
+### 已执行的应用发布（2026-10-27）
+
+两次英文提交 `a0500b8`（文档与前端小改动）、`08f9b23`（Jev 模块）已推送至 `origin/main`。生产源码快进到后一提交；后端重建镜像并单独重建容器，前端在开发机完成检查和构建后发布到 `/opt/rule_agent/src/frontend/dist`。服务器 `docker/.env` 显式设置 `JEV_MODE=disabled`，运行容器已核实关闭；真实 YAML 与其他环境配置保持原样。
+
+公网入口为 <http://121.40.185.246/>。MySQL、Redis、MinIO 容器 ID 和启动时间未变化；Nginx 配置未修改，也未重启。备份位于 `/var/backups/rule-agent/20261027T101329Z-08f9b23`，包含旧应用镜像、前端、配置、Nginx 站点、MySQL dump 和停后端后的向量/记忆目录；不包含 Redis/MinIO 数据全量备份，不等于完整灾备或恢复演练。旧前端还保留在该目录的 `frontend-directory-before/`。
+
+本次完成健康、注册登录、鉴权、模型读取及一次无工具工作台 SSE 验证，临时账号与关联数据已清理；具体命令、校验和、证据及未验证范围统一见[验证报告](verification-report.md#2026-10-27-生产发布)。
 
 2026-10-13 的部署记录使用 Git 提交 `633348d`、旧后端包名 `agentchat`，部署目录为 `/opt/rule_agent`，环境描述为 Ubuntu 24.04 x86_64、Docker Compose、宿主机 Nginx，2GB 内存配 4GB swap，面向少量用户试用。原记录称已安装 Certbot/Nginx 插件并启用 `certbot.timer`；这些是历史记录，本轮未核验其当前状态。
 
@@ -82,7 +100,7 @@ tar -czf "$TASK_BACKUP_DIR/frontend-dist.tgz" -C src/frontend dist
 docker image save -o "$TASK_BACKUP_DIR/images.tar" "$(dcprod images -q mysql)" "$(dcprod images -q redis)" "$(dcprod images -q minio)" "$TASK_BACKEND_IMAGE"
 
 dcprod stop backend minio
-dcprod exec -T mysql sh -eu -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump --user=root --single-transaction --routines --triggers --events --databases agentchat' > "$TASK_BACKUP_DIR/mysql.sql"
+dcprod exec -T mysql sh -eu -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump --user=root --single-transaction --routines --triggers --events --databases agentchat' < /dev/null > "$TASK_BACKUP_DIR/mysql.sql"
 dcprod exec -T redis redis-cli SAVE
 dcprod stop redis
 TASK_REDIS_CONTAINER="$(dcprod ps -a -q redis)"

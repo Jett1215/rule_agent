@@ -59,6 +59,61 @@ JEV_MODE= /tmp/agentruler-jev-switch-venv/bin/python -m unittest \
 
 测试返回 `Ran 31 tests`、`OK`（判别服务 20、中间件 6、工作台 5）。测试仅使用脱敏虚构 key、受控 HTTP 响应和临时配置；不能代表真实 Jev 的中文判断质量、净成本、端到端延迟或真实数据库/用户业务验收。未运行前端测试、类型检查、构建、全目录测试发现、生产部署或数据操作；本任务未修改前端、接口或数据库结构，也不宣称已有统一后端 Lint、类型检查或 CI 通过。
 
+## 2026-10-27 生产发布
+
+任务：DEPLOY-001，关联 REQ-009、REQ-010。用户明确授权按推荐顺序更新服务器，并指定 `root@121.40.185.246:22`，要求成功连接后记录连接信息。使用本机已有 `~/.ssh/agentruler_deploy` 密钥和已核验主机指纹成功登录；连接命令已写入[部署说明](cloud-deployment.md#已验证的服务器连接2026-10-27)。没有在文档中保存密码、密钥内容、Token 或真实配置值。
+
+已按用户要求创建并推送两次英文提交：`a0500b86094b566b8ca2dc2d8daf532c86cebd0c`（`docs: establish engineering documentation and refresh branding`）和 `08f9b23bb50338a6403c6929d436a047eaff43f5`（`feat(jev): add configurable tool gating and selection`）。生产 `/opt/rule_agent` 的 `main` 从 `df53c301cce956aa1d7ac5c2df3624dd94238170` 快进到 `08f9b23`；原有未跟踪目录 `src/frontend/.deploy-backups/` 保留，最终已跟踪工作区无修改。本次发布后的运维文档更新尚未另行提交或推送，不属于已部署源码提交。
+
+环境：前端本机 macOS、Node `26.0.0`、npm `11.12.1`、Vite `5.4.19`，使用已有依赖，未新增或更新前端依赖；常见路径未找到 Node 20，未将本次构建称作 Node 20 验证。后端本机定向测试使用 `/tmp/agentruler-jev-switch-venv` 的 CPython `3.13.5`；服务器 Docker Compose `5.6.0`，生产镜像运行 Python `3.12.15`，依赖按 `uv.lock` 安装。未修改数据库模型、迁移脚本或基础服务版本。
+
+| 检查 ID | 目标与实际方法 | 状态 | 结果与证据 |
+| --- | --- | --- | --- |
+| DEPLOY-CHECK-001 | SSH、Git、磁盘、Compose、卷与配置挂载核实，`nginx -t` | PASS | 成功登录用户指定主机；确认旧源码、4 个健康服务、固定项目 `rule-agent`、Nginx 静态目录和 API 代理；发布前约 20GB 可用磁盘 |
+| DEPLOY-CHECK-002 | 在 `src/frontend` 执行 `npm test`、`npm run lint`、`npm run build` | PASS | 测试 2/2，`vue-tsc --noEmit` 和生产构建通过（28.38s）；205 个文件，共 9,126,978 字节；保留 Sass 弃用、既有 eval、重复导入和大 chunk 警告，未将警告修复扩大到本次发布 |
+| DEPLOY-CHECK-003 | 本机及新镜像内运行 Jev 三组定向 unittest | PASS | 两个环境各 31 项通过；新镜像测试退出码 0（0.423s），使用 `--network none` 且不挂载生产配置，不代表真实 Jev 调用 |
+| DEPLOY-CHECK-004 | 备份旧源码标识、配置、Nginx、前端、旧镜像、MySQL 与向量/记忆；最终执行 `sha256sum -c archives.sha256` | PASS | 6 项备份文件校验通过；旧镜像归档还通过 `gzip -t`；MySQL dump 在停止后端后以单事务导出，向量/记忆目录在后端停止期间归档；不包含 Redis/MinIO 全量数据备份 |
+| DEPLOY-CHECK-005 | 构建后端并 `up -d --no-deps --force-recreate backend`，核对运行容器、初始化日志标记与配置字节 | PASS | 新后端 healthy、`/health` 返回 OK，日志有数据库及 runtime ready 标记且无对应初始化失败标记；运行环境 `JEV_MODE=disabled`；真实 YAML 与备份字节一致，`.env` 仅改变 Jev 总开关，配置权限均为 0600 |
+| DEPLOY-CHECK-006 | 对照发布前容器元数据及 Nginx 站点 | PASS | MySQL、Redis、MinIO 仍健康，容器 ID、启动时间未变；Nginx 站点字节未变，未重启或重载 Nginx，也未重启宿主机 |
+| DEPLOY-CHECK-007 | 上传前端归档，解压后逐文件 `sha256sum -c`，整体切换 dist，验证 Nginx 响应 | PASS | 全部 205 文件校验通过；旧 dist 保留；首页哈希与本机构建一致，2 个入口 JS/CSS 资源返回 200 且类型正确 |
+| DEPLOY-CHECK-008 | 在运行容器执行受控注册、登录、鉴权、模型读取及一次无工具工作台 SSE | PASS | 健康 200；无令牌鉴权 401；注册及登录 HTTP/业务码 200；错误密码 HTTP 200、业务码 10600；模型读取 200；SSE HTTP 200 且收到 `task_result`，实际调用现有主模型；没有选择工具或 MCP，也未调用 Jev |
+| DEPLOY-CHECK-009 | 精确清理临时普通账号及关联数据，并复查不存在 | PASS | 仅删除脚本随机创建账号对应的会话、用量、角色、Redis 登录 key 及账号；清理与复查成功，没有清理真实用户数据 |
+| DEPLOY-CHECK-010 | 开发机以 `curl --noproxy '*'` 公网直连首页、入口资源及 `/api/` 代理 | PASS | 首页 HTTP 200 且哈希一致；入口 JS/CSS 均 HTTP 200，JS 完整下载哈希与本地产物一致；`/api/v1/user/icons` 业务码 200；无令牌 `/api/v1/llm/schema` HTTP 401（`curl --fail` 预期退出 22），证明公网静态与受保护 API 路径可达 |
+| DEPLOY-CHECK-011 | 运维文档差异与本地引用检查 | PASS | `git diff --check` 退出 0；6 份修改 Markdown 的 64 处本地引用与对应标题有效，代码围栏闭合；只修改文档，未创建第三次提交或推送 |
+
+关键执行命令如下。构建时后端仍运行，备份应用数据和切换时只停止后端；新前端校验后整体替换目录。所有涉及私有配置、容器环境和日志的检查只输出选定状态或脱敏摘要，没有输出完整值。
+
+```bash
+# 本机 src/backend；在新生产镜像内也执行相同三个模块
+JEV_MODE= /tmp/agentruler-jev-switch-venv/bin/python -m unittest \
+  agentruler.test.test_jev_decisions \
+  agentruler.test.test_jev_middleware \
+  agentruler.test.test_jev_workspace -q
+
+# 服务器 /opt/rule_agent
+docker compose --env-file docker/.env -f docker/docker-compose.production.yml build backend
+docker run --rm --network none --entrypoint python agentruler-backend:production \
+  -m unittest agentruler.test.test_jev_decisions \
+  agentruler.test.test_jev_middleware agentruler.test.test_jev_workspace -q
+docker compose --env-file docker/.env -f docker/docker-compose.production.yml \
+  up -d --no-deps --force-recreate backend
+```
+
+第一次通过 SSH 标准输入执行切换脚本时，MySQL `exec -T` 消耗了后续脚本输入，流程停在后端停止之后，未执行容器重建。定位后为 dump 命令显式增加 `< /dev/null`，重新执行并完成数据备份、后端重建、前端切换和上述全部验证；不能把第一次提前结束记为发布成功。另在只读脚本复核中发现临时脚本后端错误处理缺少退出语句，已补充退出；本次成功发布未触发该回退分支，也未验证自动回滚。
+
+公网检查时，本机默认代理返回 302，改为 `--noproxy '*'` 直连后首页返回 200。首次入口 JS 下载收到 200，但 6,520,615 字节文件在 15 秒上限时未接收完（退出 28）；将上限延长至 60 秒后，15.17 秒完成下载、退出 0，哈希与本机构建一致。这是本次链路的单次观测，不代表页面性能验收通过。
+
+发布产物标识：
+
+- 运行后端镜像 ID：`sha256:69ab2a46fde109b4c55e4ba63717ea45499d2477173c00ca9303148b0e08ef30`。
+- 前端归档 SHA-256：`8e7b0a6b03a6e232a514d279684cd534ff7cf93ac6668ddc329fdb38f562a092`。
+- 前端文件清单 SHA-256：`8e9dfa07d5734effae9052dce9da00991a1ab8b0bd930244eea0e32923fbbf23`。
+- 首页 SHA-256：`39e600df63f4846507811a7a8702ef1fbe391ad0bdecbe4fdbf467b88aea8075`。
+
+受控证据目录为服务器 `/var/backups/rule-agent/20261027T101329Z-08f9b23`，包含 `archives.sha256`、`containers-before.json`、`backend-after.json`、`frontend-after.json`、`image-tests.log`、`frontend-checksums.log` 和 `final-verification.json`。同目录的配置归档、SQL 和数据归档含秘密或用户数据，不放入 Git、聊天或公开附件。旧镜像独立标签为 `agentruler-backend:rollback-20261027T101329Z-08f9b23`，旧前端目录为 `frontend-directory-before/`。校验和通过只证明备份文件完整性；本次没有实际恢复或回滚演练，也未配置异地备份。
+
+未验证范围：真实 Jev 调用、中文判别质量、成本与延迟收益；完整浏览器交互、多工具/MCP、文件上传下载、知识库检索、跨用户资源权限；公网 Nginx 路径下的 SSE 断连/重连；全目录后端测试、统一后端 Lint/类型检查、CI、性能和安全扫描。容器内真实 SSE 通过不能替代这些验收，JEV-001、DATA-001 和其他候选任务状态不因此完成。
+
 ## 后续记录模板
 
 每次追加验证记录时写明日期、任务/需求/验收 ID、代码提交与工作区情况、工具版本、工作目录、实际命令、测试数据与预期、退出码及实际结果，附仓库内脱敏日志或受控证据位置。外部日志不得泄露凭据、原始用户消息或私有配置。
