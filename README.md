@@ -19,3 +19,13 @@ AgentRuler（智治）是一个支持用户自主构建和扩展智能体的应�
 配置方法见 [配置说明](docs/configuration-and-git.md)。真实密钥和本地数据不提交到仓库。
 
 已有部署升级时，请参照 [名称变更说明](docs/renaming.md) 保留数据库、存储桶及数据卷配置。
+
+## 开发与项目文档
+
+- [工程文档导航](docs/README.md)：需求、验收、架构、接口、数据库及运维入口。
+- [项目开发规则](AGENTS.md)：AI Agent 与维护者的工作约定。
+- [当前项目状态](docs/project-status.md)和[任务清单](docs/task-checklist.md)：跨会话恢复进度与后续候选任务。
+- [后端开发](src/backend/README.md)、[前端开发](src/frontend/README.md)与[Docker 指南](docker/README.md)：环境配置及运行方式。
+- [测试计划](docs/test-plan.md)和[实际验证记录](docs/verification-report.md)：区分验证方法与已执行结果。
+
+现有功能、需求建议和验收通过分别记录；文档基线不代表全部功能已完成运行验证。

@@ -21,6 +21,14 @@
 YAML 不会自动展开环境变量；模型密钥填写在本机 YAML 中。
 `docker/.env` 由 Compose 读取，用于创建 MySQL 和 MinIO 服务。
 
+Jev 的可选工具门控与候选筛选默认关闭。`JEV_MODE=disabled|observe|enforce`
+可同时控制两处能力：非空环境变量覆盖 YAML 的 `jev.mode`，未设置或空白则沿用 YAML。
+非空值无效时仅告警并按 `disabled` 处理，不打印原值或阻断聊天。
+`docker/.env` 中的 `JEV_MODE` 由开发和生产 Compose 传给后端；本地 Python 可在启动命令前设置。
+它只覆盖模式，不改变 API key、独立能力开关、阈值和回退规则，也不是网页热切换。
+配置根节点、对照命令及效果验证见[Jev 接入说明](jev-integration.md#用一个变量做对照测试)；
+TypeSafe API key 同样只填写在本机 YAML 中。
+
 ## 首次配置 Docker
 
 从项目根目录执行；已经存在的本机配置不要重新覆盖：
@@ -45,6 +53,11 @@ docker compose -f docker/docker-compose.yml up -d --build
 镜像只包含脱敏模板，真实 Docker 配置在容器启动时只读挂载到
 `/app/agentruler/config.yaml`。修改 YAML 后重启后端即可读取新配置；修改代码时仍需
 重新构建镜像。已有数据库的数据卷不会因为编辑 `.env` 自动更改数据库账号密码。
+
+修改 `JEV_MODE` 等容器环境变量时，`restart backend` 不会更新已有容器环境。
+从项目根目录执行 `docker compose --env-file docker/.env -f docker/docker-compose.yml up -d --no-deps --force-recreate backend`
+使新变量生效；生产环境改用 `docker/docker-compose.production.yml`，并遵循已批准的部署流程。
+仅更改变量无需重建镜像，完整示例见上述 Jev 接入说明。
 
 ## 本地 Python 后端
 

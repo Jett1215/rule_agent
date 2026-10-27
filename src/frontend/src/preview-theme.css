@@ -178,7 +178,7 @@
 }
 .workspace-container .welcome-section { margin-bottom: 24px !important; animation: none !important; }
 .workspace-container .welcome-section .avatar-wrapper { margin-bottom: 16px !important; }
-.workspace-container .welcome-section .avatar { width: 42px !important; height: 42px !important; filter: grayscale(1) contrast(1.5) !important; transform: none !important; }
+.workspace-container .welcome-section .avatar { width: 42px !important; height: 42px !important; filter: none !important; transform: none !important; }
 .workspace-container .welcome-title {
   margin: 0 0 8px !important;
   color: #1c1d20 !important;
@@ -254,7 +254,7 @@
 
 /* Application center shell; scoped by the route class in index.vue. */
 #app .ai-body.platform-shell .ai-nav { background: #fff !important; border-bottom: 1px solid var(--preview-line); box-shadow: none !important; }
-#app .ai-body.platform-shell .ai-nav .left .item-img .logo { width: 24px !important; height: 24px !important; filter: grayscale(1) contrast(1.5) !important; }
+#app .ai-body.platform-shell .ai-nav .left .item-img .logo { width: 24px !important; height: 24px !important; filter: none !important; }
 #app .ai-body.platform-shell .ai-nav .left .nav-links { margin-left: 9px !important; }
 #app .ai-body.platform-shell .ai-nav .brand-wordmark {
   color: #202124;
@@ -264,7 +264,6 @@
   letter-spacing: -.035em;
   line-height: 1;
 }
-#app .ai-body.platform-shell .ai-nav .logo,
 #app .ai-body.platform-shell .ai-nav .brand-logo-img { filter: grayscale(1) contrast(1.5) !important; }
 #app .ai-body.platform-shell .ai-main { background: #fff !important; }
 #app .ai-body.platform-shell .ai-main .el-col-2 { width: 240px !important; min-width: 240px !important; max-width: 240px !important; flex: 0 0 240px !important; }

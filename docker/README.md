@@ -1,396 +1,98 @@
-# 🐳 AgentRuler Docker 部署指南
+# AgentRuler Docker 指南
 
-> 🚀 **一键部署 AgentRuler** - 完整的容器化解决方案
+本目录同时提供开发 Compose 与生产 Compose。两套配置的端口、镜像、数据目录及前端部署方式不同，所有命令应明确指定文件。工程入口见 [AGENTS.md](../AGENTS.md) 与 [文档索引](../docs/README.md)。
 
-## 📋 目录
+本页依据 2026-10-21 的仓库文件静态整理；本轮未构建镜像、启动容器或检查云端。生产历史和备份恢复计划见 [云部署说明](../docs/cloud-deployment.md)。
 
-- [🎯 快速开始](#🎯-快速开始)
-- [🔧 配置说明](#🔧-配置说明)
-- [🏗️ 服务架构](#🏗️-服务架构)
-- [📊 服务管理](#📊-服务管理)
-- [🐛 故障排除](#🐛-故障排除)
-- [📈 性能优化](#📈-性能优化)
+## 两种部署
 
----
+| 项目 | 开发 `docker-compose.yml` | 生产 `docker-compose.production.yml` |
+| --- | --- | --- |
+| 后端 | Python 3.12、`uv sync --frozen`；Chrome/ChromeDriver linux64 | Python 3.12、从 `uv.lock` 导出并校验哈希安装；Chromium/Pandoc；单 Uvicorn worker |
+| 前端 | Node 20、Vite 开发服务器，`8090:8090` | Compose 不含前端；宿主机 Nginx 托管 `dist/` |
+| 后端端口 | `7860:7860` | `127.0.0.1:7860:7860` |
+| MySQL | MySQL 8，`127.0.0.1:3307:3306` | MySQL 8，无宿主机端口映射 |
+| Redis | Redis 7，`6379:6379` | Redis 7、AOF、无宿主机端口映射 |
+| MinIO | 2023-03-20 发布镜像，`9000:9000`、`9001:9001` | 从固定 2025-09-06 发布标签构建，仅 `127.0.0.1:9000:9000` |
+| Compose 项目 | 默认由目录/运行参数决定 | 固定 `name: rule-agent`，用于沿用现有数据卷 |
 
-## 🎯 快速开始
+需准备 Docker Engine、Compose v2、构建依赖下载网络及足够的磁盘空间。开发后端明确指定 `linux/amd64`；ARM 主机需要可用的 amd64 模拟环境，性能和工具兼容性需实测。仓库没有通用最低容量验证，生产配置中的内存上限也不代表已经通过负载测试。
 
-### 📋 系统要求
+开发 Compose 的多个端口面向所有宿主机网络接口，不适合直接公开到互联网；按实际开发网络限制访问。生产入口和 TLS 另由 Nginx 管理。
 
-- **Docker**: 20.10+
-- **Docker Compose**: 2.0+
-- **内存**: 最少4GB，推荐8GB+
-- **磁盘**: 最少10GB可用空间
+## 开发配置与启动
 
-### 🚀 一键启动
-
-```bash
-# 1️⃣ 从项目根目录进入 docker 目录
-cd docker
-
-# 配置应用（必须先完成；已有配置不要重复覆盖）
-cp docker_config.example.yaml docker_config.yaml
-cp .env.example .env
-# 填写 API 密钥；MySQL / MinIO 凭据在两个文件中必须一致
-vim docker_config.yaml
-vim .env
-
-# 2️⃣ 设置执行权限
-chmod +x start_linux.sh 
-
-# 3️⃣ 启动所有服务
-./start_linux.sh
-```
-
-### 🌐 访问地址
-
-| 🎯 **服务** | 🔗 **地址** | 📝 **说明** |
-|:---:|:---:|:---|
-| **前端界面** | [localhost:8090](http://localhost:8090) | Vue3 开发服务器 |
-| **后端API** | [localhost:7860](http://localhost:7860) | FastAPI 应用服务 |
-| **API文档** | [localhost:7860/docs](http://localhost:7860/docs) | Swagger 在线文档 |
-| **MySQL** | `localhost:3306` | 数据库服务 |
-| **Redis** | `localhost:6379` | 缓存服务 |
-
----
-
-## 🔧 配置说明
-
-### ⚠️ 重要提示
-
-**应用读取 YAML 配置；Compose 使用 `docker/.env` 设置 MySQL / MinIO 凭据。**
-
-仓库只提交 `docker_config.example.yaml` 和 `.env.example`。真实配置、密钥和
-`docker/data/` 下的上传文件、向量数据及备份保留在本机，并由 `.gitignore` 排除。
-后端镜像只包含配置模板，运行时只读挂载 `docker_config.yaml`，避免把密钥写入镜像。
-详细说明见 [配置与 Git 提交](../docs/configuration-and-git.md)。
-
-在启动 Docker 容器之前，您必须先修改配置文件：
+从项目根目录执行；已有配置不要重复覆盖：
 
 ```bash
-# 编辑配置文件（必须在启动前完成）
-vim docker_config.yaml
+cp -n docker/docker_config.example.yaml docker/docker_config.yaml
+cp -n docker/.env.example docker/.env
+chmod 600 docker/.env docker/docker_config.yaml
 ```
 
-### 🤖 必要配置项
+本机编辑配置，字段以 [Docker YAML 模板](docker_config.example.yaml) 与 [Compose 环境模板](.env.example) 为准：
 
-打开 `docker_config.yaml` 并修改以下配置：
+- YAML 的 MySQL 同步/异步连接主机均为 `mysql:3306`，库名保留 `agentchat`。默认模板使用 root，其密码对应 `.env` 的 `MYSQL_ROOT_PASSWORD`；改用 `agentchat_user` 时对应 `MYSQL_PASSWORD`，并核查初始化权限。
+- Redis 使用 `redis:6379`；MinIO endpoint 使用 `minio:9000`。MinIO 的 YAML access key/secret 分别对应 `.env` 的 `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`。
+- `storage.mode` 选择 `minio` 或 `oss`，不是旧的 `aliyun_oss` 根节点。MinIO 的 `base_url` 是浏览器可访问的对象地址，远程访问时不能保持浏览器自己的 `127.0.0.1`。
+- 按实际功能填入 `multi_models`、`tools`；不部署 Elasticsearch 时保持禁用。当前 Compose 没有 Milvus/Elasticsearch 服务，`chroma` 使用挂载的本地目录。
+- 应用只读挂载 YAML；YAML 不会展开环境变量。`.env` 只供 Compose 插值，不会自动变成所有容器的环境。
+- 自有 JWT 模块读取 `AUTHJWT_SECRET_KEY`。生产 Compose 强制要求此值，但开发 Compose 尚未传入，`.env.example` 也没有该项。若需安全的开发登录凭据，应在本地 override 的后端 `environment` 中显式传入独立值；只把值写入 `.env` 不够。
 
-#### 1️⃣ 数据库配置（必填）
-
-```yaml
-mysql:
-  endpoint: "mysql+pymysql://root:your-password@mysql:3306/agentchat"
-  async_endpoint: "mysql+aiomysql://root:your-password@mysql:3306/agentchat"
-
-redis:
-  endpoint: "redis://redis:6379"
-```
-
-> � **注意**：Docker 环境中，主机名使用服务名（`mysql`、`redis`），而不是 `localhost`
-
-#### 2️⃣ AI 模型配置（必填）
-
-```yaml
-multi_models:
-  # 对话模型
-  conversation_model:
-    api_key: "your-api-key"
-    base_url: "https://api.openai.com/v1"
-    model_name: "gpt-4"
-  
-  # 工具调用模型
-  tool_call_model:
-    api_key: "your-api-key"
-    base_url: "https://api.openai.com/v1"
-    model_name: "gpt-4"
-  
-  # Embedding 模型
-  embedding:
-    api_key: "your-api-key"
-    base_url: "https://api.openai.com/v1"
-    model_name: "text-embedding-3-small"
-```
-
-#### 3️⃣ 可选配置
-
-```yaml
-# RAG 向量数据库（如需使用知识库功能）
-rag:
-  vector_db:
-    host: "your-milvus-host"
-    port: "19530"
-    mode: "chroma"
-
-# 对象存储（如需文件上传功能）
-aliyun_oss:
-  access_key_id: "your-access-key"
-  access_key_secret: "your-secret"
-  endpoint: "oss-cn-beijing.aliyuncs.com"
-  bucket_name: "your-bucket"
-```
-
-### 🔐 Docker 环境配置注意事项
-
-在 Docker 环境中，请确保：
-
-1. **数据库主机名**：使用 `mysql` 而不是 `localhost`
-2. **Redis 主机名**：使用 `redis` 而不是 `localhost`
-3. **服务端口**：保持 `docker_config.yaml` 中的端口配置为 `7860`
-4. **API 密钥**：填写真实有效的 API 密钥
-
----
-
-## 🏗️ 服务架构
-
-```mermaid
-graph TB
-    A[前端 Frontend :8090] --> B[后端 Backend :7860]
-    B --> C[MySQL :3306]
-    B --> D[Redis :6379]
-    
-    style A fill:#4FC08D
-    style B fill:#009688
-    style C fill:#4479A1
-    style D fill:#DC382D
-```
-
-### 📦 服务详情
-
-| 🏷️ **服务名**  | 🐳 **镜像** | 📝 **说明**            |
-|:------------:|:---|:---------------------|
-| **frontend** | node:18-alpine | Vue3 + Vite 开发服务器    |
-| **backend**  | python:3.12-slim | FastAPI + uvicorn 应用 |
-|  **mysql**   | mysql:8.0 | 主数据库                 |
-|  **redis**   | redis:7.0-alpine | 缓存和会话存储              |
-|  **minio**   | minio:RELEASE.2023-03-20T20-16-18Z | 对象存储                 |
-
----
-
-## 📊 服务管理
-
-### 🔍 查看服务状态
+配置、真实数据和备份不提交，详见 [配置与 Git](../docs/configuration-and-git.md)。只执行安静的配置检查，避免完整 `config` 输出展开后的秘密：
 
 ```bash
-# 查看所有服务状态
-docker-compose ps
-
-# 查看服务详细信息
-docker-compose ps --format table
+docker compose --env-file docker/.env -f docker/docker-compose.yml config --quiet
+docker compose --env-file docker/.env -f docker/docker-compose.yml up -d --build
+docker compose --env-file docker/.env -f docker/docker-compose.yml ps
 ```
 
-### 📋 查看日志
+也可以在配置完成后从根目录运行 `bash docker/start_linux.sh`，脚本会切换到 `docker/` 再执行 Compose。脚本仅等待 10 秒并展示状态，不代表首次初始化完成；后端 healthcheck 另有 180 秒启动宽限期。
+
+访问前端 `http://localhost:8090`、后端 `http://localhost:7860`、API 文档 `http://localhost:7860/docs`；MinIO 控制台为 `http://localhost:9001`。前端通过 Vite 将同源 `/api` 请求代理到容器内后端。
+
+首次启动可能创建数据库/表、写默认数据、上传头像并访问模型和 MCP。`/health` 只检查进程能否返回固定响应，不能验证这些依赖可用。应核查初始化日志并执行隔离环境业务验收。
+
+## 管理与调试
+
+以下命令均从项目根目录执行，操作开发环境：
 
 ```bash
-# 查看所有服务日志
-docker-compose logs -f
-
-# 查看特定服务日志
-docker-compose logs -f backend
-docker-compose logs -f frontend
-docker-compose logs -f mysql
-docker-compose logs -f redis
-
-# 查看最近100行日志
-docker-compose logs --tail=100 backend
+docker compose --env-file docker/.env -f docker/docker-compose.yml ps
+docker compose --env-file docker/.env -f docker/docker-compose.yml logs --tail=100 backend
+docker compose --env-file docker/.env -f docker/docker-compose.yml restart backend
+docker compose --env-file docker/.env -f docker/docker-compose.yml up -d --build backend frontend
+docker compose --env-file docker/.env -f docker/docker-compose.yml stop
 ```
 
-### 🔄 服务操作
+更改挂载 YAML 后重启后端；更改 Python/Vue 代码后重新构建对应镜像。当前默认 Compose 没有启用源码挂载或热更新。前端镜像使用 `npm install`，本地可重复安装则按 [前端 README](../src/frontend/README.md) 使用 `npm ci`。
+
+后端远程调试可叠加 `docker-compose.debug.yml`：
 
 ```bash
-# 重启特定服务
-docker-compose restart backend
-
-# 重新构建并启动
-docker-compose up --build -d
-
-# 仅启动数据库服务
-docker-compose up -d mysql redis
-
-# 停止所有服务
-./stop.sh
+docker compose --env-file docker/.env -f docker/docker-compose.yml -f docker/docker-compose.debug.yml up -d --build backend
 ```
 
-### 📊 资源监控
+调试 overlay 在容器启动时安装 `debugpy`，需要下载网络，并将调试端口绑定到宿主机 `127.0.0.1:5678`。退出调试后使用基础开发 Compose 重新创建后端。
 
-```bash
-# 查看容器资源使用情况
-docker stats
+容器内查询 MySQL 可用 `docker compose --env-file docker/.env -f docker/docker-compose.yml exec mysql mysql -u root -p`，密码交互输入。不要在命令行参数、聊天或日志中填写密码；不要通过打印 YAML、`.env` 或容器环境排查密钥问题。
 
-# 查看特定容器统计
-docker stats agentruler-backend agentruler-frontend
-```
+## 持久化与更新边界
 
----
+| 数据 | 开发持久化位置 | 生产持久化位置 |
+| --- | --- | --- |
+| MySQL | `mysql_data` 命名卷 | `rule-agent_mysql_data`（默认固定项目名） |
+| Redis | `redis_data` 命名卷 | `rule-agent_redis_data`；配置 AOF |
+| MinIO | `${DOCKER_VOLUME_DIRECTORY:-.}/data/minio_data`，默认 `docker/data/minio_data` | `docker/data/minio_data` |
+| Chroma | `docker/data/vector_db` | `docker/data/vector_db` |
+| Memory | 开发 Compose 未显式挂载 | `docker/data/memory_db` |
 
-## 🐛 故障排除
+开发 Redis 挂载了数据卷但没有显式开启 AOF，其耐久性需核实。开发环境若使用 memory 数据，还需按真实使用方式补充持久化方案。不要默认替换目录或项目名：这可能使 Compose 使用全新数据卷，表现为“数据丢失”。
 
-### ❓ 常见问题
+更新镜像不会迁移已有表字段，也不会备份数据；修改 `.env` 不会自动修改已有 MySQL 卷中的账号密码。不要用 `down -v`、`docker volume rm` 或清空数据目录处理常规连接问题。生产发布前先完成 [备份及恢复演练](../docs/cloud-deployment.md#备份计划与操作草案)，然后按同页流程发布或回滚。
 
-<details>
-<summary><b>🔧 服务启动失败</b></summary>
+## 排查入口
 
-```bash
-# 检查日志
-docker-compose logs backend
+连接失败时先核对对应 Compose 文件和服务状态，再检查容器内主机名、宿主机端口、账号一致性与已存在卷的历史凭据。工具失败时核对系统依赖、API 权限和外部网络；SSE 断流时核对代理缓冲和超时。只分享脱敏后的最小日志片段。
 
-# 检查配置文件
-cat docker.env
-
-# 重新构建容器
-docker-compose build --no-cache backend
-```
-
-</details>
-
-<details>
-<summary><b>🔌 端口被占用</b></summary>
-
-```bash
-# 查看端口占用
-lsof -i :7860
-lsof -i :8090
-
-# 修改docker-compose.yml中的端口映射
-ports:
-  - "17860:7860"  # 改为其他端口
-```
-
-</details>
-
-<details>
-<summary><b>💾 数据库连接失败</b></summary>
-
-```bash
-# 检查MySQL容器状态
-docker-compose ps mysql
-
-# 进入MySQL容器
-docker-compose exec mysql mysql -u root -p
-
-# 重置数据库
-docker-compose down mysql
-docker volume rm docker_mysql_data
-docker-compose up -d mysql
-```
-
-</details>
-
-<details>
-<summary><b>🚀 API密钥错误</b></summary>
-
-```bash
-# 检查配置文件
-cat ../src/backend/agentruler/config.yaml
-
-# 修改挂载的 Docker 配置文件
-vim docker_config.yaml
-
-# 重启后端服务使配置生效
-docker-compose restart backend
-```
-
-</details>
-
----
-
-## 📈 性能优化
-
-### 🚀 开发环境优化
-
-```yaml
-# docker-compose.override.yml
-version: '3.8'
-services:
-  backend:
-    volumes:
-      - ../src/backend:/app:cached  # 使用cached模式
-    environment:
-      - PYTHONUNBUFFERED=1
-      - PYTHONDONTWRITEBYTECODE=1
-
-  frontend:
-    volumes:
-      - ../src/frontend:/app:cached
-    command: npm run dev -- --host 0.0.0.0 --port 8090
-```
-
-
-### 📊 监控和指标
-
-```bash
-# 启用容器监控
-docker run -d \
-  --name cadvisor \
-  -p 8080:8080 \
-  -v /:/rootfs:ro \
-  -v /var/run:/var/run:ro \
-  -v /sys:/sys:ro \
-  -v /var/lib/docker/:/var/lib/docker:ro \
-  gcr.io/cadvisor/cadvisor:latest
-```
-
----
-
-## 🔧 高级配置
-
-### 🌐 Nginx反向代理
-
-```nginx
-# nginx.conf
-upstream backend {
-    server localhost:7860;
-}
-
-upstream frontend {
-    server localhost:8090;
-}
-
-server {
-    listen 80;
-    server_name your-domain.com;
-    
-    location /api/ {
-        proxy_pass http://backend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-    
-    location / {
-        proxy_pass http://frontend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-### 🔒 SSL/TLS配置
-
-```bash
-# 使用Let's Encrypt
-docker run -it --rm \
-  -v /etc/letsencrypt:/etc/letsencrypt \
-  -v /var/lib/letsencrypt:/var/lib/letsencrypt \
-  certbot/certbot certonly --standalone -d your-domain.com
-```
-
----
-
-## 📞 获取帮助
-
-如果遇到问题，请：
-
-1. 🔍 检查 [故障排除](#🐛-故障排除) 部分
-2. 📋 查看容器日志：`docker-compose logs -f`
-3. 🐛 在GitHub提交Issue
-4. 💬 加入我们的社区讨论
-
----
-
-<div align="center">
-
-**🐳 愉快地使用 Docker 部署 AgentRuler！**
-
-*如有问题，请查看日志或联系维护者*
-
-</div>
+工程验证步骤见 [后端 README](../src/backend/README.md)、[前端 README](../src/frontend/README.md) 和 [测试计划](../docs/test-plan.md)。本页的静态核对不构成部署成功或恢复成功证据。

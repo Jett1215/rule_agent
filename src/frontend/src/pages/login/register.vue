@@ -184,7 +184,7 @@ const goToLogin = () => {
         <div class="footer">
           <div class="version-badge" title="AgentRuler 版本">v2.5.0</div>
           <div class="footer-icons">
-            <a href="https://github.com/Shy2593666979/AgentChat" target="_blank" class="icon-link" title="GitHub">
+            <a href="https://github.com/Jett1215/rule_agent" target="_blank" class="icon-link" title="GitHub">
               <img src="../../assets/github.png" alt="GitHub" class="icon-img" />
             </a>
             <a href="https://uawlh9wstr9.feishu.cn/wiki/QOaLwMDtBiiduWk4YtAcavEsnne" target="_blank" class="icon-link" title="帮助文档">

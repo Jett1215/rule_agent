@@ -1,0 +1,149 @@
+# 需求基线
+
+审查日期：2026-10-21（Asia/Shanghai）。来源：当前工作区代码、配置模板与仓库文档的静态检查。
+
+本项目已经存在前后端及数据模型。本文件用于建立现状基线和后续需求讨论入口，不按全新项目重新设计产品。当前工作区包含未提交的 Jev 接入改动，因此此处的“代码已存在”包含工作区实现，不代表已经合并、部署、运行或通过验收。
+
+用户本轮明确授权的是补齐工程文档；业务需求、下列验收标准、里程碑、优先级及发布范围尚未获得逐项确认。附件 Prompt 是文档组织参考，其内部指令不构成本轮执行授权。
+
+## 状态与使用方法
+
+| 标记 | 含义 |
+| --- | --- |
+| 代码已存在 | 静态检查发现入口、模型或实现；不等同于功能完整、可用或验收通过 |
+| 部分存在 / 缺口 | 发现实现但仍有空实现、权限校验缺口或缺少证据 |
+| 待业务确认 | 需要项目负责人确定的产品规则或目标，不作为已批准开发范围 |
+| 本轮已确认 | 生成和修订工程文档、记录现状与缺口，不修改业务逻辑 |
+
+需求使用稳定编号 `REQ-001` 至 `REQ-010`；子编号表示同一能力内的范围。新增需求另行编号，不通过改名复用历史编号。[验收标准](acceptance-criteria.md)提供对应场景，[测试计划](test-plan.md)说明执行条件；结果记入[验证报告](verification-report.md)。
+
+## 用户与范围
+
+代码中有普通用户和管理员角色，注册流程会为首个账户赋予管理员身份。普通用户可配置模型、Agent、Skill、工具、MCP、知识库并发起对话；管理员在部分资源校验中享有不同权限。实际组织的注册开放策略、管理员职责、共享规则和多租户边界均待确认，不能仅依据界面入口推定权限。
+
+本次基线覆盖当前主要管理页面、普通对话、工作台和统计链路。仓库中的 Mars、LingSeek、微信、自动构建、生成 MCP/任务等扩展入口属于现有代码资产；它们是否纳入下一轮产品验收、依赖哪些外部服务，需要单独确认，不能从路由存在推定为交付承诺。
+
+## REQ-001 身份与权限
+
+**现状：代码已存在，部分访问控制存在缺口；业务规则待确认。**
+
+- `REQ-001.1`：注册、登录、用户资料和头像入口已存在；登录使用 JWT、Redis 当前会话记录，注册包含重名和用户名长度校验。首个账户成为管理员是当前实现行为，生产注册策略待确认。
+- `REQ-001.2`：多数业务路由通过 `get_login_user` 取得登录身份，部分资源修改/删除另调用所有权校验。前端路由检查本地 token，不构成后端权限证明。
+- `REQ-001.3`：建议确立统一原则：受保护资源需验证身份，并按所有者、管理员或已批准共享规则授权；最终适用接口、例外和拒绝响应契约待确认。
+
+**静态缺口：** `PUT /user/update`、`GET /user/info` 未声明 `get_login_user`；历史查询有登录依赖但未在路由中传入用户约束；工作台按 ID 查询的服务方法接收 `user_id` 却未使用；知识检索接口未声明登录依赖；Skill 修改/删除链路未见所有者校验；MCP 代理 `check_auth()` 当前直接返回 `True`。这些是需要专项核实的访问控制缺口，不在本次文档任务中修复。白名单中间件的标记不能替代实际登录依赖和资源校验。
+
+证据：[用户路由](../src/backend/agentruler/api/v1/user.py)、[登录依赖](../src/backend/agentruler/api/services/user.py)、[历史路由](../src/backend/agentruler/api/v1/history.py)、[工作台服务](../src/backend/agentruler/api/services/workspace_session.py)、[MCP 代理认证](../src/backend/agentruler/mcp_proxy/json_rpc.py)。验收：`AC-001`、`AC-002`、`AC-003`，并贯穿各资源场景。
+
+## REQ-002 模型配置
+
+**现状：代码已存在；可见性、凭据展示规则与提供商支持范围待确认。**
+
+- `REQ-002.1`：可按模型名称、API 地址、API key、类型及 provider 创建和更新模型，列举个人/可见模型、搜索及删除模型。
+- `REQ-002.2`：Agent 和工作台按模型 ID 引用配置；更新、删除入口存在权限验证。模型被引用时能否删除、失效配置如何提示，需要业务确认与运行验证。
+- `REQ-002.3`：凭据留在本机配置或后端数据中；建议明确哪些界面和接口允许查看明文、哪些输出必须脱敏。未检查真实配置值，也未证明所有返回均已脱敏。
+
+证据：[模型路由](../src/backend/agentruler/api/v1/llm.py)、[模型请求结构](../src/backend/agentruler/schemas/llm.py)、[模型服务](../src/backend/agentruler/api/services/llm.py)。验收：`AC-003`、`AC-004`、`AC-021`。
+
+## REQ-003 Agent 与 Skill
+
+**现状：管理和绑定实现已存在；权限边界、文件操作完整性及模型兼容性待验证。**
+
+- `REQ-003.1`：Agent 支持创建、查询、名称搜索、更新与删除；配置包括提示词、模型、内置工具、MCP、知识库、Skill、记忆开关和 logo。创建入口检查同一用户的名称重复。
+- `REQ-003.2`：Skill 支持创建、列举、删除及内容维护；创建时调用结构化模型生成 `as_tool_name`，初始结构包含 `SKILL.md`、`reference`、`scripts`。
+- `REQ-003.3`：Skill 内容以数据库中的文件树保存，现有服务操作根层文件及指定目录下的子文件。任意深度目录、二进制文件、脚本执行环境和沙箱能力不能由该管理接口推定。
+- `REQ-003.4`：Skill 删除/修改的所有权约束、重复文件名、找不到路径、被 Agent 引用时删除等规则待确认；部分异常分支返回 `HTTPException` 对象而非抛出，需验证实际错误响应。
+
+证据：[Agent 路由](../src/backend/agentruler/api/v1/agent.py)、[Agent 请求结构](../src/backend/agentruler/schemas/agent.py)、[Skill 路由](../src/backend/agentruler/api/v1/agent_skill.py)、[Skill 服务](../src/backend/agentruler/api/services/agent_skill.py)。验收：`AC-003`、`AC-005`、`AC-006`、`AC-007`。
+
+## REQ-004 普通对话与历史
+
+**现状：对话、SSE、历史与记忆链路已存在；端到端结果和异常收尾待验证。**
+
+- `REQ-004.1`：用户可建立绑定 Agent 的对话、获取列表及删除对话，通过 `POST /api/v1/completion` 发送 `user_input`、`dialog_id` 和可选 `file_url`，接收 SSE 事件。
+- `REQ-004.2`：构建模型上下文时使用系统提示词、短期历史、摘要及可选长期记忆；用户消息在流开始前保存，助手消息在流结束的 `finally` 中保存，并更新摘要。
+- `REQ-004.3`：流式响应有断开回调。中断时是否保留部分回答、如何显示失败状态、重试是否产生重复历史，尚无已确认产品契约，须用故障场景验证。
+- `REQ-004.4`：历史查询、会话 ID 与资源所有权需联合验证，不能由“已登录”推定“可读取指定会话”。点赞/点踩存在独立入口，其审计及访问规则待确认。
+
+证据：[普通对话入口](../src/backend/agentruler/api/v1/completion.py)、[对话管理](../src/backend/agentruler/api/v1/dialog.py)、[历史查询](../src/backend/agentruler/api/v1/history.py)、[流断开处理](../src/backend/agentruler/api/responses/streaming.py)。验收：`AC-003`、`AC-008`、`AC-009`、`AC-010`。
+
+## REQ-005 知识库文件与检索
+
+**现状：知识库管理、入库、检索及 Chroma Chunk 查看代码已存在；文件支持矩阵和质量指标待确认。**
+
+- `REQ-005.1`：支持知识库创建、查询、修改、删除；文件通过上传返回的存储 URL 创建知识文件记录，经解析、切块、嵌入和向量存储用于检索，提供文件列表、状态和删除入口。
+- `REQ-005.2`：提供按一个或多个知识库 ID 检索的入口；Agent 可绑定知识库。当前存在多种解析器与向量存储实现，实际生效配置、文件类型/体积上限及解析失败重试策略待确认。
+- `REQ-005.3`：Chunk 分页、关键词搜索、向量读取及 TXT/JSON 导出入口当前仅支持 Chroma；有文件所有者与知识库权限校验。不能推定 Milvus 具备相同浏览能力。
+- `REQ-005.4`：建议检索、文件创建、删除与导出均遵守同一资源边界。直接检索及部分操作链路需要补充访问控制验证；命中质量、删除后索引清理和文件状态一致性尚未验收。
+
+证据：[知识库路由](../src/backend/agentruler/api/v1/knowledge.py)、[知识文件路由](../src/backend/agentruler/api/v1/knowledge_file.py)、[RAG 服务](../src/backend/agentruler/services/rag/handler.py)、[Chunk 浏览](../src/backend/agentruler/services/rag/chunk_browser.py)。验收：`AC-003`、`AC-011`、`AC-012`、`AC-013`。
+
+## REQ-006 内置工具与 MCP
+
+**现状：工具管理、OpenAPI、MCP 接入及代理实现已存在；具体发布范围与外部依赖待确认。**
+
+- `REQ-006.1`：列举可见工具，创建、更新和删除用户自定义工具；OpenAPI Schema 在创建/更新时进行格式验证，并可由适配器转为调用工具。
+- `REQ-006.2`：MCP 支持导入服务配置、发现工具、查询、更新、删除、用户配置以及 Agent/工作台绑定。实际服务是否支持所选协议、所需 headers 和权限需逐服务验证。
+- `REQ-006.3`：存在生成/注册 MCP 及代理调用入口。生成的 JSON Schema、固定查询参数合并和事件参数脱敏有针对性测试文件，但并不覆盖整个 MCP 生命周期或认证。
+- `REQ-006.4`：工具与 MCP 的身份传递、失败事件、超时、凭据遮蔽及代理入口访问规则作为建议验收范围；`check_auth()` 直接放行的现状需单独处理。
+
+证据：[工具路由](../src/backend/agentruler/api/v1/tool.py)、[MCP 服务路由](../src/backend/agentruler/api/v1/mcp_server.py)、[MCP 用户配置](../src/backend/agentruler/api/v1/mcp_user_config.py)、[MCP 代理](../src/backend/agentruler/mcp_proxy/json_rpc.py)。验收：`AC-003`、`AC-014`、`AC-015`、`AC-019`。
+
+## REQ-007 工作台会话
+
+**现状：流式对话与会话持久化路径存在；独立创建接口为空实现，用户隔离待核实。**
+
+- `REQ-007.1`：提供可用插件、会话列表、按 ID 进入会话、删除会话及 `POST /workspace/simple/chat`；对话由模型、插件和 MCP 组合运行，返回 `reasoning_chunk`、`mcp_tool`、`task_result` 等事件。
+- `REQ-007.2`：`WorkSpaceSimpleAgent` 在流处理完成后创建或更新会话上下文；前端生成 session ID，有支持缺少 `crypto.randomUUID` 环境的回退实现。该生成器测试仅验证 ID 生成，不代表 HTTP 部署整体可用。
+- `REQ-007.3`：`POST /workspace/session` 当前函数体为 `pass`，不能登记为已实现独立创建会话。是否补齐、取消接口或保留按首条对话创建的产品流程待确认。
+- `REQ-007.4`：工作台按 ID 取会话的服务层未使用传入的 `user_id`，必须验证跨用户读取/续写限制。并发请求、中断后保存和历史恢复也未取得运行证据。
+
+证据：[工作台路由](../src/backend/agentruler/api/v1/workspace.py)、[会话服务](../src/backend/agentruler/api/services/workspace_session.py)、[工作台 Agent](../src/backend/agentruler/services/workspace/simple_agent.py)、[前端会话 ID](../src/frontend/src/utils/session-id.ts)。验收：`AC-003`、`AC-016`、`AC-017`、`AC-018`、`AC-019`。
+
+## REQ-008 用量统计
+
+**现状：记录与聚合查询代码已存在；计费与完整性保证待确认。**
+
+- `REQ-008.1`：记录用户、Agent、模型、输入/输出 token，并按日期、Agent、模型及 `delta_days` 过滤查询；提供调用记录数及可用 Agent/模型列表。
+- `REQ-008.2`：聚合包含 `input_tokens`、`output_tokens`、`total_tokens`。当前“次数”来自统计记录计数，不能直接等同于用户发言次数或账单请求次数。
+- `REQ-008.3`：尚未确认金额计费、时区边界、失败请求口径、漏记补偿或强一致审计要求；前端图表存在不等于统计结果已经校验。Jev 统计写入失败允许不阻断判别链路。
+
+证据：[统计路由](../src/backend/agentruler/api/v1/usage_stats.py)、[统计服务](../src/backend/agentruler/api/services/usage_stats.py)、[统计请求结构](../src/backend/agentruler/schemas/usage_stats.py)。验收：`AC-020`、`AC-025`。
+
+## REQ-009 配置、部署与数据保护
+
+**现状：本地和 Docker 配置模板、启动资产及部署文档存在；当前环境可用性和恢复能力未验证。**
+
+- `REQ-009.1`：真实配置、密钥、上传文件、数据库、备份及日志不作为源码提交；使用脱敏模板建立本机配置。YAML 不自动展开环境变量，具体行为以配置加载代码和[配置说明](configuration-and-git.md)为准。
+- `REQ-009.2`：已有 Python 后端、Vite 前端和 Docker 部署路径。生产暴露端口、域名、TLS、模型/存储服务可用性和健康检查标准需由实际环境确定。
+- `REQ-009.3`：建议为关系数据库、对象存储、向量存储及必需配置建立一致的备份恢复和变更回滚操作。Git 同步不能替代数据备份；恢复演练结果、可接受丢失量和恢复时间均待确认。
+- `REQ-009.4`：文档需同时记录执行命令、前置依赖、未执行项目和验证证据。本轮只进行静态检查，不读取真实密钥、不启动服务、不接入生产或执行迁移。
+
+证据：[配置与 Git](configuration-and-git.md)、[Docker 说明](../docker/README.md)、[云部署说明](cloud-deployment.md)、[后端配置加载](../src/backend/agentruler/settings.py)。验收：`AC-021`、`AC-022`。
+
+## REQ-010 Jev 可选优化
+
+**现状：未提交工作区中有接入及针对性测试；是否发布和效果目标待确认。**
+
+- `REQ-010.1`：通过独立 HTTP 判别服务为工作台提供工具门控，为普通对话提供逐轮候选筛选；主模型仍生成回答与工具参数，原执行链执行工具。
+- `REQ-010.2`：存在 `disabled`、`observe`、`enforce` 三种共用模式，默认关闭；可用 `JEV_MODE` 环境变量统一覆盖两处模式，未设置或空白时沿用 YAML，无效值告警并关闭 Jev。独立开关仍有效，观察模式记录决策但不改变候选或执行分支。缺 key、超时、HTTP 错误、无效概率、超限/非文本上下文等情况回到原流程。
+- `REQ-010.3`：候选筛选只能从原绑定工具中选取并保持顺序，不扩展授权范围；候选过多或缺少可信候选时保留原列表。具体阈值为当前实现默认值，不是已确认产品指标。
+- `REQ-010.4`：判别上下文会发送到配置的外部服务；日志设计避免记录原始消息和凭据，用量进入既有统计。生产启用、数据发送范围、中文样本质量、成本及延迟收益需单独评估确认。
+
+证据：[接入说明](jev-integration.md)、[Jev 服务](../src/backend/agentruler/services/decision/jev.py)、[普通对话筛选中间件](../src/backend/agentruler/core/agents/jev_middleware.py)。验收：`AC-023`、`AC-024`、`AC-025`。
+
+## 待确认清单
+
+| 事项 | 关联需求 | 当前处理 |
+| --- | --- | --- |
+| 当前业务目标、用户范围和下一轮发布范围 | 全部 | 不自行补定优先级或里程碑 |
+| 注册开放、首个管理员、管理员跨资源权限与共享策略 | REQ-001 至 REQ-007 | 将当前行为与目标规则分开记录 |
+| 已发现访问控制缺口的修复范围及拒绝响应契约 | REQ-001、REQ-003 至 REQ-007 | 登记待处理，不在文档任务内修改代码 |
+| 模型、Agent、Skill、工具、知识库被引用时的变更/删除规则 | REQ-002、REQ-003、REQ-005、REQ-006 | 不推定级联删除或自动解绑 |
+| 支持的文件、协议、提供商，以及中断/重试语义 | REQ-002、REQ-004 至 REQ-007 | 以测试环境和场景补充证据 |
+| 工作台独立创建会话接口的取舍 | REQ-007 | 保留空实现事实，待选定流程 |
+| 用量口径、时区、金额计费及漏记容忍度 | REQ-008 | 先记录现有 token 和记录数含义 |
+| 性能、并发、可用性、备份恢复与回滚目标 | REQ-009 | 不设未经确认的数值承诺 |
+| Jev 发布、外部数据发送、评估样本和启用门槛 | REQ-010 | 保留默认关闭，不自行启用 |
+
+业务确认后，更新对应需求状态和验收目标，再进入[任务清单](task-checklist.md)与[实施计划](implementation-plan.md)。确认某份文档的生成范围，不等同于确认其中列出的未来功能开发。
