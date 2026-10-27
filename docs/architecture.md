@@ -1,6 +1,6 @@
 # 当前系统架构
 
-更新日期：2026-10-21。依据：当前工作区源码，包含尚未提交的 Jev 接入代码。本文件是实现基线；没有启动应用、连接数据库或外部服务，也不代表线上部署状态与此一致。
+更新日期：2026-10-27。依据：已提交的应用源码及既有验证记录；架构基线最初于 2026-10-21 静态整理。应用 `08f9b23` 已部署，后续 `5d67cc7` 仅更新运维文档，应用和部署文件无差异。具体运行证据与限制见[验证报告](verification-report.md)，逻辑架构图不代表所有路径已经验收。
 
 ## 系统边界
 
@@ -69,7 +69,7 @@ flowchart LR
 
 工作台由 `services/workspace/simple_agent.py` 等实现，维护任务、引导提示和回答等上下文；其会话落在 `workspace_session` 表。`POST /api/v1/workspace/session` 当前为 `pass` 占位，不能仅凭路由存在判定该能力可用。
 
-当前工作区的 Jev 是可选外部决策层：工作台调用工具前使用 `should_run_tools()` 门控，普通 `GeneralAgent` 使用 `JevToolSelectorMiddleware` 在每轮模型调用前筛选候选工具。缺省 `disabled`；`observe` 记录决策并保留原行为，`enforce` 才应用门控/筛选。缺少 Key、超时、响应异常、上下文超限或置信度不足等分支保留原有工具路径。它不增加工具权限，也不是资源授权层。详见[Jev 接入说明](jev-integration.md)；本轮未验证远程服务或部署启用状态。
+Jev 是可选外部决策层：工作台调用工具前使用 `should_run_tools()` 门控，普通 `GeneralAgent` 使用 `JevToolSelectorMiddleware` 在每轮模型调用前筛选候选工具。缺省 `disabled`；`observe` 记录决策并保留原行为，`enforce` 才应用门控/筛选。缺少 Key、超时、响应异常、上下文超限或置信度不足等分支保留原有工具路径。它不增加工具权限，也不是资源授权层。详见[Jev 接入说明](jev-integration.md)；2026-10-27 发布时已验证运行容器 `JEV_MODE=disabled`，未调用真实 Jev 服务或评估效果。
 
 2026-10-27 配置增量：两处仍共用同一模式，可由进程环境变量 `JEV_MODE` 覆盖 YAML 的 `jev.mode`；未设置或空白保留 YAML，非法值按关闭处理。开发/生产 Compose 将该变量传给后端；切换环境变量需重启 Python 进程或重建后端容器，未引入网页热切换。
 

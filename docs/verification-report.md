@@ -63,7 +63,7 @@ JEV_MODE= /tmp/agentruler-jev-switch-venv/bin/python -m unittest \
 
 任务：DEPLOY-001，关联 REQ-009、REQ-010。用户明确授权按推荐顺序更新服务器，并指定 `root@121.40.185.246:22`，要求成功连接后记录连接信息。使用本机已有 `~/.ssh/agentruler_deploy` 密钥和已核验主机指纹成功登录；连接命令已写入[部署说明](cloud-deployment.md#已验证的服务器连接2026-10-27)。没有在文档中保存密码、密钥内容、Token 或真实配置值。
 
-已按用户要求创建并推送两次英文提交：`a0500b86094b566b8ca2dc2d8daf532c86cebd0c`（`docs: establish engineering documentation and refresh branding`）和 `08f9b23bb50338a6403c6929d436a047eaff43f5`（`feat(jev): add configurable tool gating and selection`）。生产 `/opt/rule_agent` 的 `main` 从 `df53c301cce956aa1d7ac5c2df3624dd94238170` 快进到 `08f9b23`；原有未跟踪目录 `src/frontend/.deploy-backups/` 保留，最终已跟踪工作区无修改。本次发布后的运维文档更新尚未另行提交或推送，不属于已部署源码提交。
+已按用户要求创建并推送两次英文提交：`a0500b86094b566b8ca2dc2d8daf532c86cebd0c`（`docs: establish engineering documentation and refresh branding`）和 `08f9b23bb50338a6403c6929d436a047eaff43f5`（`feat(jev): add configurable tool gating and selection`）。生产 `/opt/rule_agent` 的 `main` 从 `df53c301cce956aa1d7ac5c2df3624dd94238170` 快进到 `08f9b23`；原有未跟踪目录 `src/frontend/.deploy-backups/` 保留，最终已跟踪工作区无修改。发布验证结束时运维文档尚未另行提交；其后用户已提交为 `5d67cc7`，该文档提交不属于本次已部署源码，收尾时的 Git 核对见下文。
 
 环境：前端本机 macOS、Node `26.0.0`、npm `11.12.1`、Vite `5.4.19`，使用已有依赖，未新增或更新前端依赖；常见路径未找到 Node 20，未将本次构建称作 Node 20 验证。后端本机定向测试使用 `/tmp/agentruler-jev-switch-venv` 的 CPython `3.13.5`；服务器 Docker Compose `5.6.0`，生产镜像运行 Python `3.12.15`，依赖按 `uv.lock` 安装。未修改数据库模型、迁移脚本或基础服务版本。
 
@@ -79,7 +79,7 @@ JEV_MODE= /tmp/agentruler-jev-switch-venv/bin/python -m unittest \
 | DEPLOY-CHECK-008 | 在运行容器执行受控注册、登录、鉴权、模型读取及一次无工具工作台 SSE | PASS | 健康 200；无令牌鉴权 401；注册及登录 HTTP/业务码 200；错误密码 HTTP 200、业务码 10600；模型读取 200；SSE HTTP 200 且收到 `task_result`，实际调用现有主模型；没有选择工具或 MCP，也未调用 Jev |
 | DEPLOY-CHECK-009 | 精确清理临时普通账号及关联数据，并复查不存在 | PASS | 仅删除脚本随机创建账号对应的会话、用量、角色、Redis 登录 key 及账号；清理与复查成功，没有清理真实用户数据 |
 | DEPLOY-CHECK-010 | 开发机以 `curl --noproxy '*'` 公网直连首页、入口资源及 `/api/` 代理 | PASS | 首页 HTTP 200 且哈希一致；入口 JS/CSS 均 HTTP 200，JS 完整下载哈希与本地产物一致；`/api/v1/user/icons` 业务码 200；无令牌 `/api/v1/llm/schema` HTTP 401（`curl --fail` 预期退出 22），证明公网静态与受保护 API 路径可达 |
-| DEPLOY-CHECK-011 | 运维文档差异与本地引用检查 | PASS | `git diff --check` 退出 0；6 份修改 Markdown 的 64 处本地引用与对应标题有效，代码围栏闭合；只修改文档，未创建第三次提交或推送 |
+| DEPLOY-CHECK-011 | 运维文档差异与本地引用检查 | PASS | `git diff --check` 退出 0；当时 6 份修改 Markdown 的 64 处本地引用与对应标题有效，代码围栏闭合；该检查点仅有文档修改，助手未创建第三次提交或推送；用户后续提交另记 |
 
 关键执行命令如下。构建时后端仍运行，备份应用数据和切换时只停止后端；新前端校验后整体替换目录。所有涉及私有配置、容器环境和日志的检查只输出选定状态或脱敏摘要，没有输出完整值。
 
@@ -113,6 +113,25 @@ docker compose --env-file docker/.env -f docker/docker-compose.production.yml \
 受控证据目录为服务器 `/var/backups/rule-agent/20261027T101329Z-08f9b23`，包含 `archives.sha256`、`containers-before.json`、`backend-after.json`、`frontend-after.json`、`image-tests.log`、`frontend-checksums.log` 和 `final-verification.json`。同目录的配置归档、SQL 和数据归档含秘密或用户数据，不放入 Git、聊天或公开附件。旧镜像独立标签为 `agentruler-backend:rollback-20261027T101329Z-08f9b23`，旧前端目录为 `frontend-directory-before/`。校验和通过只证明备份文件完整性；本次没有实际恢复或回滚演练，也未配置异地备份。
 
 未验证范围：真实 Jev 调用、中文判别质量、成本与延迟收益；完整浏览器交互、多工具/MCP、文件上传下载、知识库检索、跨用户资源权限；公网 Nginx 路径下的 SSE 断连/重连；全目录后端测试、统一后端 Lint/类型检查、CI、性能和安全扫描。容器内真实 SSE 通过不能替代这些验收，JEV-001、DATA-001 和其他候选任务状态不因此完成。
+
+## 2026-10-27 开发收尾
+
+任务：CLOSE-001；关联 REQ-009.4。用户确认当前任务完成，要求依据本机《02-日常恢复Prompt.doc》收尾。使用 macOS `textutil -convert txt -stdout` 只读提取文档内容，按用户本轮请求落实规则加载、Git/实际代码核对、状态同步、验证复核及下一步交接；没有因文档中的“继续下一项开发任务”启动新的候选事项，也未修改原始 Word 文档。
+
+收尾开始时 `git status --short` 无输出，分支为 `main`；HEAD 与本地 `origin/main` 跟踪引用同为 `5d67cc7b2402867e5dbe859fb08eb480fbbf1e87`，该用户提交标题为 `1`，仅包含上次六份运维文档。这里是本地 Git 事实，本轮没有重新联网查询 GitHub 或服务器，不能把跟踪引用视为实时远端验证；已部署应用版本仍引用 DEPLOY-001 的 `08f9b23` 验证记录。
+
+| 检查 ID | 方法与范围 | 状态 | 实际结果与边界 |
+| --- | --- | --- | --- |
+| CLOSE-CHECK-001 | 读取根规则、项目状态、任务清单、实施计划及相关需求/架构/验收/测试计划；`git status --short --branch`、`git show --stat HEAD` | PASS | 当前任务及授权范围明确，开始时无工作区修改；确认用户已提交此前运维文档，修正“尚未提交”的过时描述，保留当时检查结果的历史语境 |
+| CLOSE-CHECK-002 | `git diff --quiet 08f9b23 HEAD -- src docker pyproject.toml uv.lock AGENTS.md`，只读核对 Jev 服务、两处接入与 Compose | PASS | 退出 0，应用/部署树与已验证版本一致；共享模式、两处接入、模板默认关闭及 Compose 透传仍存在。本轮不重做已有开发、构建或部署 |
+| CLOSE-CHECK-003 | `python3 /tmp/agentruler-close-check.py`、`git diff --check` | PASS | 9 份修改均为 Markdown，234 处本地引用、其中 9 处标题锚点有效；代码围栏闭合、差异格式通过，暂存区保持为空；任务清单 6 项已批准任务均为 DONE，候选任务未启动 |
+| CLOSE-CHECK-004 | 复核既有测试/发布结果，人工审阅状态和文档差异 | PASS | 前端 2/2、类型检查、构建，后端 31 项定向测试、10 组 Compose 静态检查及部署最小链路仍按原环境和执行范围记录；本轮仅改交接文档，未将这些历史检查记为重新运行 |
+
+本轮自动静态检查在本机 macOS、仓库根目录执行，使用 `python3`（CPython 3.9.6）；仅执行 Git/Markdown 静态脚本，不用该解释器导入或运行要求 Python 3.12+ 的后端。详细计数保存在本机 `/tmp/agentruler-close-check-result.json`；脚本不读取真实配置、不启动服务或调用外部 API。收尾改动同步项目状态、任务清单、需求、架构、验收、测试计划及相关参考文档，没有业务逻辑、接口、数据结构或依赖变化。收尾检查阶段未提交或推送 Git，九份文档修改留在工作区；用户随后明确授权以英文提交信息归档并推送这些修改，最终提交记录以 Git 历史为准。
+
+首次收尾静态脚本将已批准任务行数误设为 7（实际为 6），计数断言失败、退出 1；核对任务 ID 后更正脚本，重跑通过。该问题属于临时检查脚本的计数修正，没有修改既有任务完成状态。
+
+结论：本次已批准范围全部完成，无阻塞；真实 Jev/收益、完整跨模块及浏览器验收、访问控制专项、恢复/回滚等仍是后续候选和验证边界，不作为本轮未完成事项。下一轮先完成 BASE-001 的范围确认；若用户选择 JEV-001，再明确对照样本、数据发送范围、费用和环境。本轮没有启用 Jev、执行恢复、清理已有备份或删除本机配置/数据。
 
 ## 后续记录模板
 
