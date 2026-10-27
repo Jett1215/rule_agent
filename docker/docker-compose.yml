@@ -61,6 +61,7 @@ services:
       - "7860:7860"
     environment:
       TZ: Asia/Shanghai
+      JEV_MODE: ${JEV_MODE:-}
     volumes:
       - ./docker_config.yaml:/app/agentruler/config.yaml:ro
       # ChromaDB 数据保留在宿主机，更新后端容器时继续使用。

@@ -11,10 +11,11 @@ from langchain.tools.tool_node import ToolCallRequest
 from langchain.agents import create_agent, AgentState
 from langgraph.config import get_stream_writer
 from langchain_core.messages import BaseMessage, ToolMessage, HumanMessage, AIMessageChunk
-from langchain.agents.middleware import LLMToolSelectorMiddleware, ModelRequest, ModelResponse, AgentMiddleware
+from langchain.agents.middleware import ModelRequest, ModelResponse, AgentMiddleware
 
 from agentruler.api.services.agent_skill import AgentSkillService
 from agentruler.core.agents.skill_agent import SkillAgent
+from agentruler.core.agents.jev_middleware import JevToolSelectorMiddleware
 from agentruler.core.callbacks import usage_metadata_callback
 from agentruler.database import AgentSkill
 from agentruler.tools import AgentToolsWithName
@@ -74,8 +75,9 @@ class EmitEventAgentMiddleware(AgentMiddleware):
         handler: Callable[[ModelRequest], ModelResponse],
     ) -> ModelResponse:
         try:
-            if available_tools := request.state.get("available_tools", []):
-                request.tools = available_tools
+            available_tools = request.state.get("available_tools")
+            if available_tools is not None:
+                request = request.override(tools=available_tools)
             response = await handler(request)
             return response
         except Exception as err:
@@ -155,15 +157,9 @@ class GeneralAgent:
         self.react_agent = self.setup_react_agent()
 
     async def setup_agent_middleware(self):
-        # 仅支持传入response_format为json object的模型
-        tool_selector_middleware = LLMToolSelectorMiddleware(
-            model=self.tool_invocation_model,
-            max_tools=3 # 限制每次选择最多 3个工具
-        )
-
         emit_event_middleware = EmitEventAgentMiddleware(self.get_tool_display_name)
 
-        return [emit_event_middleware]
+        return [emit_event_middleware, JevToolSelectorMiddleware()]
 
 
     async def setup_language_model(self):

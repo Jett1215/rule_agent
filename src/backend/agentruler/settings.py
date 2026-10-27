@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     whitelist_paths: list = []
     wechat_config: dict = {}
     default_config: dict = {}
+    # Parsed by JevDecisionService; absent in existing deployments means disabled.
+    jev: dict = {}
 
     server: Optional[ServerConfig] = ServerConfig()
     rag: Optional[Rag] = None

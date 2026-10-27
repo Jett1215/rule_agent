@@ -83,6 +83,7 @@ services:
     environment:
       TZ: Asia/Shanghai
       AUTHJWT_SECRET_KEY: ${AUTHJWT_SECRET_KEY:?Set AUTHJWT_SECRET_KEY}
+      JEV_MODE: ${JEV_MODE:-}
     ports:
       - "127.0.0.1:7860:7860"
     volumes:

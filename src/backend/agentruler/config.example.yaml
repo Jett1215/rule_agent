@@ -17,6 +17,22 @@ mysql:
 redis:
   endpoint: "redis://localhost:6379" # Redis 连接地址
 
+# 可选 Jev 决策层；填写自己的 key 后可用 observe 观察，enforce 生效。
+jev:
+  mode: disabled
+  api_key: ""
+  base_url: "https://api.typesafe.ai"
+  model: "jev-1.13.0"
+  timeout_seconds: 1.5
+  tool_gate_enabled: true
+  tool_selector_enabled: true
+  min_tools_for_selection: 10
+  max_selected_tools: 5
+  skip_tools_probability: 0.05
+  tool_relevance_threshold: 0.15
+  max_context_chars: 12000
+  max_tools: 100
+
 # 多模型服务配置 (LL@M、Embedding、Rerank)
 multi_models:
   # 对话模型配置

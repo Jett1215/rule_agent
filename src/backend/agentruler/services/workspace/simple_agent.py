@@ -21,6 +21,7 @@ from agentruler.services.mcp.manager import MCPManager
 from agentruler.prompts.completion import GenerateTitlePrompt
 from agentruler.utils.convert import convert_mcp_config
 from agentruler.core.models.manager import ModelManager
+from agentruler.services.decision.jev import JevDecisionService
 from agentruler.api.services.mcp_user_config import MCPUserConfigService
 from agentruler.api.services.usage_stats import UsageStatsService
 from agentruler.api.services.workspace_session import WorkSpaceSessionService
@@ -91,6 +92,7 @@ class WorkSpaceSimpleAgent:
         self.session_id = session_id
 
         self.user_id = user_id
+        self.jev_decisions = JevDecisionService()
 
         # Find user config by server name
         self.server_dict: dict[str, Any] = {}
@@ -244,7 +246,7 @@ class WorkSpaceSimpleAgent:
 
         try:
             react_agent_task = None
-            if self.tools and len(self.tools) != 0:
+            if self.tools and await self.jev_decisions.should_run_tools(messages, self.tools):
                 react_agent_task = asyncio.create_task(self.react_agent.ainvoke({"messages": messages}))
 
             # Wait for tool execution to complete
@@ -294,9 +296,10 @@ class WorkSpaceSimpleAgent:
         generate_title_task = asyncio.create_task(self._generate_title(user_messages[-1].content))
         mcp_tool_calls = []
         reasoning_text = ""
+        tool_messages = []
         try:
             react_agent_task = None
-            if self.tools and len(self.tools) != 0:
+            if self.tools and await self.jev_decisions.should_run_tools(user_messages, self.tools):
                 tool_event_queue = asyncio.Queue()
                 self._tool_event_queue = tool_event_queue
 
@@ -340,9 +343,9 @@ class WorkSpaceSimpleAgent:
                     yield event
 
                 results = await react_agent_task
-                messages = results["messages"][:-1]  # Remove messages that didn't hit tools
+                result_messages = results["messages"][:-1]  # Remove the tool agent's final text.
 
-                messages = [msg for msg in messages if
+                tool_messages = [msg for msg in result_messages if
                             isinstance(msg, ToolMessage) or (isinstance(msg, AIMessage) and msg.tool_calls)]
         except Exception as err:
             raise ValueError from err
@@ -350,7 +353,7 @@ class WorkSpaceSimpleAgent:
             if react_agent_task is not None and not react_agent_task.done():
                 react_agent_task.cancel()
             self._tool_event_queue = None
-        messages = user_messages + messages
+        messages = user_messages + tool_messages
 
         final_answer = ""
         async for chunk in self.model.astream(input=messages, config={"callbacks": [usage_metadata_callback]}):

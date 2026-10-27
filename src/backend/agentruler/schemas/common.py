@@ -7,6 +7,23 @@ class ModelConfig(BaseModel):
     api_key: str = ""
     base_url: str = ""
 
+
+class JevConfig(BaseModel):
+    mode: Literal["disabled", "observe", "enforce"] = "disabled"
+    api_key: str = Field(default="", repr=False)
+    base_url: str = "https://api.typesafe.ai"
+    model: str = "jev-1.13.0"
+    timeout_seconds: float = Field(default=1.5, gt=0, le=30)
+    tool_gate_enabled: bool = True
+    tool_selector_enabled: bool = True
+    min_tools_for_selection: int = Field(default=10, ge=1)
+    max_selected_tools: int = Field(default=5, ge=1)
+    skip_tools_probability: float = Field(default=0.05, ge=0, lt=0.5)
+    tool_relevance_threshold: float = Field(default=0.15, gt=0, lt=0.5)
+    max_context_chars: int = Field(default=12000, ge=1)
+    max_tools: int = Field(default=100, ge=1, le=255)
+
+
 class MultiModels(BaseModel):
     class Config:
         # 允许从dict额外属性创建模型
