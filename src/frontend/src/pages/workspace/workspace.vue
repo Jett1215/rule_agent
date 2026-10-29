@@ -1,755 +1,178 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { 
-  getWorkspaceSessionsAPI, 
-  deleteWorkspaceSessionAPI 
-} from '../../apis/workspace'
+import { getWorkspaceSessionsAPI, deleteWorkspaceSessionAPI } from '../../apis/workspace'
+import { getDialogListAPI, deleteDialogAPI } from '../../apis/history'
+import {
+  normalizeConversationHistory, mergeConversationHistory, conversationLocation, selectedConversationKey,
+  type ConversationEntry, type ConversationMode, type ConversationSource,
+} from '../../utils/conversation-history'
 
 const router = useRouter()
-import { useRoute } from 'vue-router'
 const route = useRoute()
-const selectedSession = ref('')
-const sessions = ref<any[]>([])
+const workspaceSessions = ref<ConversationEntry[]>([])
+const agentDialogs = ref<ConversationEntry[]>([])
+const sourceErrors = ref<ConversationSource[]>([])
 const loading = ref(false)
+const filter = ref<'all' | ConversationMode>('all')
 const openSessionActions = ref('')
+const deletingKeys = ref<string[]>([])
+const selectedSession = computed(() => selectedConversationKey(route.query))
+const sessions = computed(() => mergeConversationHistory(workspaceSessions.value, agentDialogs.value))
+const filteredSessions = computed(() => sessions.value.filter(session => filter.value === 'all' || session.mode === filter.value))
+const filters = [{ id: 'all', label: '全部' }, { id: 'normal', label: '日常' }, { id: 'lingseek', label: '灵寻' }] as const
+let requestVersion = 0
+let newConversation = Date.now()
 
-// 获取会话列表
 const fetchSessions = async () => {
-  try {
-    loading.value = true
-    const response = await getWorkspaceSessionsAPI()
-    if (response.data.status_code === 200) {
-      sessions.value = response.data.data.map((session: any) => ({
-        sessionId: session.session_id || session.id,
-        title: session.title || '未命名会话',
-        createTime: session.create_time || session.created_at || new Date().toISOString(),
-        agent: session.agent || 'lingseek', // 保存agent类型，默认为lingseek
-        contexts: session.contexts || [] // 保存上下文
-      }))
-      console.log('工作区会话列表:', sessions.value)
+  const version = ++requestVersion
+  loading.value = true
+  const results = await Promise.allSettled([getWorkspaceSessionsAPI(), getDialogListAPI()])
+  if (version !== requestVersion) return
+  const errors: ConversationSource[] = []
+  results.forEach((result, index) => {
+    const source = index === 0 ? 'workspace' : 'dialog'
+    if (result.status === 'fulfilled' && result.value.data.status_code === 200 && Array.isArray(result.value.data.data)) {
+      const entries = normalizeConversationHistory(result.value.data.data, source)
+      if (source === 'workspace') workspaceSessions.value = entries
+      else agentDialogs.value = entries
     } else {
-      ElMessage.error('获取会话列表失败')
+      errors.push(source)
     }
-  } catch (error) {
-    console.error('获取会话列表出错:', error)
-    ElMessage.error('获取会话列表失败')
+  })
+  sourceErrors.value = errors
+  loading.value = false
+}
+
+const startConversation = () => {
+  const mode = route.query.mode === 'lingseek' ? 'lingseek' : 'normal'
+  router.push({ name: 'workspaceDefaultPage', query: { mode, new: String(++newConversation) } })
+}
+
+const deleteSession = async (session: ConversationEntry) => {
+  if (deletingKeys.value.includes(session.key)) return
+  deletingKeys.value.push(session.key)
+  try {
+    const response = session.source === 'dialog'
+      ? await deleteDialogAPI(session.id)
+      : await deleteWorkspaceSessionAPI(session.id)
+    if (response.data.status_code !== 200) throw new Error('Delete failed')
+    workspaceSessions.value = workspaceSessions.value.filter(item => item.key !== session.key)
+    agentDialogs.value = agentDialogs.value.filter(item => item.key !== session.key)
+    if (selectedSession.value === session.key) startConversation()
+    ElMessage.success('会话删除成功')
+    await fetchSessions()
+  } catch {
+    ElMessage.error('删除会话失败，请重试')
   } finally {
-    loading.value = false
+    deletingKeys.value = deletingKeys.value.filter(key => key !== session.key)
   }
 }
 
-// 删除会话
-const deleteSession = async (sessionId: string) => {
-  try {
-    const response = await deleteWorkspaceSessionAPI(sessionId)
-    if (response.data.status_code === 200) {
-      ElMessage.success('会话删除成功')
-      await fetchSessions()
-      
-      if (selectedSession.value === sessionId) {
-        selectedSession.value = ''
-        router.push('/workspace')
-      }
-    } else {
-      ElMessage.error('删除会话失败')
-    }
-  } catch (error) {
-    console.error('删除会话出错:', error)
-    ElMessage.error('删除会话失败')
-  }
-}
+const selectSession = (session: ConversationEntry) => router.push(conversationLocation(session))
 
-// 选择会话 - 根据agent类型跳转到不同页面
-const selectSession = (sessionId: string) => {
-  selectedSession.value = sessionId
-  
-  // 找到对应的会话
-  const session = sessions.value.find(s => s.sessionId === sessionId)
-  
-  if (!session) {
-    console.error('未找到会话:', sessionId)
-    return
-  }
-  
-  console.log('选择会话:', sessionId, '类型:', session.agent)
-  
-  // 根据agent类型判断跳转页面
-  if (session.agent === 'simple') {
-    // 日常模式，跳转到日常对话页面，并传递session_id
-    router.push({
-      name: 'workspaceDefaultPage',
-      query: {
-        session_id: sessionId
-      }
-    })
-  } else {
-    // lingseek模式，跳转到三列布局页面
-    router.push({
-      name: 'taskGraphPage',
-      query: {
-        session_id: sessionId
-      }
-    })
-  }
-}
+// 旧智能体对话切换时重新挂载，隔离它的共享消息状态与流连接。
+// 日常页自行处理 session_id 变化；首次生成的 ID 写回 URL 时不能中断流。
+const pageKey = computed(() => route.name === 'chatPage'
+  ? `dialog:${String(route.query.dialog_id || '')}`
+  : `${String(route.name)}:${String(route.query.mode || 'normal')}:${String(route.query.new || '')}`)
 
-// 跳转到工作台（当前页）
-const goToWorkspace = () => {
-  router.push('/workspace')
-}
-
-// Keep the active row aligned with the session in the URL, including new chats.
-watch(() => route.query.session_id, (sessionId) => {
-  selectedSession.value = typeof sessionId === 'string' ? sessionId : ''
-}, { immediate: true })
-
-onMounted(fetchSessions)
+watch(() => route.fullPath, () => { openSessionActions.value = '' })
+onMounted(() => {
+  fetchSessions()
+  window.addEventListener('conversation-updated', fetchSessions)
+})
+onBeforeUnmount(() => {
+  ++requestVersion
+  window.removeEventListener('conversation-updated', fetchSessions)
+})
 </script>
 
 <template>
   <div class="workspace-container">
-    <!-- 工作区主内容 -->
     <div class="workspace-main">
-    <!-- 左侧边栏 -->
-    <div class="sidebar">
-      <!-- 新会话与页面导航 -->
-      <div class="create-section">
-        <button @click="goToWorkspace" class="create-btn-native">
-          <div class="btn-content">
-            <span class="icon">＋</span>
-            <span>新会话</span>
+      <aside class="sidebar" aria-label="会话历史">
+        <div class="create-section">
+          <div class="module-title">会话模块</div>
+          <button @click="startConversation" class="create-btn-native">
+            <span class="btn-content"><span class="icon">＋</span><span>新会话</span></span>
+          </button>
+        </div>
+        <div class="history-filters" aria-label="筛选会话">
+          <button v-for="item in filters" :key="item.id" :class="{ active: filter === item.id }"
+            :aria-pressed="filter === item.id" @click="filter = item.id">{{ item.label }}</button>
+        </div>
+        <div v-if="sourceErrors.length" class="history-error" role="status">
+          <span>{{ sourceErrors.length === 2 ? '会话记录加载失败' : '部分会话记录加载失败' }}</span>
+          <button @click="fetchSessions" :disabled="loading">重试</button>
+        </div>
+        <div class="session-list" :aria-busy="loading">
+          <div class="session-list-label">最近会话</div>
+          <div v-if="loading && !sessions.length" class="empty-state">正在加载会话列表…</div>
+          <div v-else-if="!filteredSessions.length && !sourceErrors.length" class="empty-state">
+            {{ sessions.length ? '该模式暂无会话' : '暂无会话记录' }}
           </div>
-        </button>
+          <div v-for="session in filteredSessions" :key="session.key"
+            :class="['session-card', { active: selectedSession === session.key }]"
+            role="button" tabindex="0" :aria-current="selectedSession === session.key ? 'true' : undefined"
+            @click="selectSession(session)" @keydown.enter.self="selectSession(session)"
+            @keydown.space.self.prevent="selectSession(session)">
+            <div class="session-info">
+              <div class="session-title" :title="session.title">{{ session.title }}</div>
+              <span class="session-mode" :class="session.mode">{{ session.mode === 'lingseek' ? '灵寻' : '日常' }}</span>
+            </div>
+            <div class="session-actions" :class="{ 'is-open': openSessionActions === session.key }" @click.stop @keydown.stop>
+              <el-dropdown trigger="click" popper-class="workspace-session-menu" @command="deleteSession(session)"
+                @visible-change="openSessionActions = $event ? session.key : ''">
+                <button class="session-more-btn" :disabled="deletingKeys.includes(session.key)"
+                  :aria-label="`会话操作：${session.title}`" title="会话操作">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>
+                  </svg>
+                </button>
+                <template #dropdown><el-dropdown-menu><el-dropdown-item command="delete">删除会话</el-dropdown-item></el-dropdown-menu></template>
+              </el-dropdown>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <div class="content">
+        <router-view v-slot="{ Component }"><component :is="Component" :key="pageKey" /></router-view>
       </div>
-
-      <!-- 会话列表 -->
-      <div class="session-list">
-        <div class="session-list-label">最近</div>
-        <!-- 加载状态 -->
-        <div v-if="loading" class="loading-state">
-          <div class="loading-icon">⏳</div>
-          <div class="loading-text">正在加载会话列表...</div>
-        </div>
-
-        <!-- 空状态 -->
-        <div v-else-if="sessions.length === 0" class="empty-state">
-          <img src="../../assets/workspace-session.svg" alt="暂无会话" class="empty-icon-img" />
-          <div class="empty-text">暂无会话记录</div>
-        </div>
-
-        <!-- 会话卡片 -->
-        <div
-          v-for="session in sessions"
-          :key="session.sessionId"
-          :class="['session-card', { active: selectedSession === session.sessionId }]"
-          role="button"
-          tabindex="0"
-          @click="selectSession(session.sessionId)"
-          @keydown.enter.self="selectSession(session.sessionId)"
-          @keydown.space.self.prevent="selectSession(session.sessionId)"
-        >
-          <div class="session-info">
-            <div class="session-title" :title="session.title">{{ session.title }}</div>
-          </div>
-          <div class="session-actions" :class="{ 'is-open': openSessionActions === session.sessionId }" @click.stop @keydown.stop>
-            <el-dropdown trigger="click" popper-class="workspace-session-menu" @command="deleteSession(session.sessionId)" @visible-change="openSessionActions = $event ? session.sessionId : ''">
-              <button class="session-more-btn" :aria-label="`会话操作：${session.title}`" title="会话操作">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" />
-                </svg>
-              </button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="delete">删除会话</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 右侧内容区域 -->
-    <div class="content">
-      <router-view />
-    </div>
     </div>
   </div>
 </template>
 
 <style lang="scss" scoped>
-.workspace-container {
-
-}
-.workspace-container {
-  width: 100%;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background-color: #f8f9fa;
-}
-
-.workspace-nav {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  height: 64px;
-  background: linear-gradient(180deg, #e0f2fe 0%, #dbeafe 100%);
-  padding: 0 24px;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
-  position: relative;
-  z-index: 3000;
-
-  .nav-left {
-    display: flex;
-    align-items: center;
-
-    .logo-section {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-
-      .logo {
-        width: 32px;
-        height: 32px;
-          display: block;
-          object-fit: contain;
-        filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.2));
-      }
-    }
-
-    .nav-links {
-      display: flex;
-      align-items: center;
-      margin-left: 8px;
-      gap: 10px;
-
-        .brand-title {
-          font-family: 'Zhi Mang Xing', 'Ma Shan Zheng', 'ZCOOL KuaiLe', 'PingFang SC', 'Microsoft YaHei', 'Source Han Sans CN', 'Noto Sans CJK SC', 'Helvetica Neue', Arial, sans-serif;
-          font-size: 28px;
-          font-weight: 700;
-          letter-spacing: 0.5px;
-          background: linear-gradient(135deg, #1f2937 0%, #3b82f6 50%, #8b5cf6 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-          -webkit-text-stroke: 0.4px rgba(31, 41, 55, 0.06);
-          text-shadow: 0 3px 12px rgba(59, 130, 246, 0.3);
-          user-select: none;
-        }
-
-        .brand-logo-img {
-          height: 45px;
-          width: auto;
-          display: block;
-          filter: drop-shadow(0 2px 6px rgba(59, 130, 246, 0.25));
-          user-select: none;
-        }
-
-      .nav-link {
-        background: #f8fafc;
-        color: #0f172a;
-        border: 1px solid #e5e7eb;
-        height: 40px;
-        padding: 0 14px;
-        border-radius: 14px;
-        font-size: 13px;
-        font-weight: 800;
-        letter-spacing: 0.4px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        position: relative;
-
-        &:hover {
-          background: #eef2ff;
-          transform: translateY(-1px);
-          box-shadow: 0 8px 18px rgba(2, 6, 23, 0.08);
-        }
-
-        .icon {
-          width: 20px;
-          height: 20px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-
-          img {
-            width: 20px;
-            height: 20px;
-          }
-        }
-      }
-
-      .workspace-link {
-        background: linear-gradient(135deg, rgba(59,130,246,0.18), rgba(99,102,241,0.18));
-        border-color: rgba(99,102,241,0.24);
-
-        &:hover {
-          background: linear-gradient(135deg, rgba(59,130,246,0.26), rgba(99,102,241,0.26));
-        }
-
-        &.active {
-          background: #eef2ff;
-          border-color: #c7d2fe;
-          color: #0f172a;
-          box-shadow: inset 0 0 0 1px rgba(99,102,241,0.25);
-
-          &::after {
-            content: '';
-            position: absolute;
-            left: 12px;
-            right: 12px;
-            bottom: -5px;
-            height: 2px;
-            border-radius: 2px;
-            background: rgba(99,102,241,0.6);
-          }
-        }
-      }
-
-      .appcenter-link {
-        background: linear-gradient(135deg, rgba(16,185,129,0.16), rgba(59,130,246,0.16));
-        border-color: rgba(59,130,246,0.22);
-
-        &:hover {
-          background: linear-gradient(135deg, rgba(16,185,129,0.24), rgba(59,130,246,0.24));
-        }
-
-        &.active {
-          background: #ebf5ff;
-          border-color: #bfdbfe;
-          color: #0f172a;
-          box-shadow: inset 0 0 0 1px rgba(59,130,246,0.22);
-
-          &::after {
-            content: '';
-            position: absolute;
-            left: 12px;
-            right: 12px;
-            bottom: -5px;
-            height: 2px;
-            border-radius: 2px;
-            background: rgba(59,130,246,0.55);
-          }
-        }
-      }
-
-      .app-center { position: relative; }
-
-      .mega-menu {
-        position: absolute;
-        top: 48px;
-        left: 0;
-        background: #ffffff;
-        border: 1px solid rgba(2, 6, 23, 0.08);
-        border-radius: 14px;
-        box-shadow: 0 20px 40px rgba(2, 6, 23, 0.18);
-        padding: 18px;
-        min-width: 560px;
-        z-index: 4000;
-        color: #0f172a;
-
-        .menu-header {
-          font-size: 13px;
-        font-weight: 600;
-          color: #64748b;
-          margin-bottom: 8px;
-        }
-
-        .menu-columns {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .menu-column {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .menu-item {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 10px 12px;
-          border-radius: 10px;
-          color: #1f2937;
-          text-decoration: none;
-          transition: all 0.2s ease;
-
-          &:hover {
-            background: linear-gradient(180deg, #f8fbff, #f3f6fb);
-            box-shadow: inset 0 0 0 1px #e5e7eb;
-          }
-
-          .icon {
-            width: 30px;
-            height: 30px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 9px;
-            background: #eef4ff;
-            border: 1px solid rgba(99, 102, 241, 0.12);
-
-            img {
-              width: 19px;
-              height: 19px;
-            }
-          }
-
-          .text {
-            font-size: 14px;
-            font-weight: 700;
-          }
-        }
-      }
-    }
-  }
-
-  .nav-right {
-    .user-info {
-      .user-avatar-wrapper {
-        display: flex;
-        align-items: center;
-        padding: 4px;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.15);
-        backdrop-filter: blur(10px);
-        cursor: pointer;
-        transition: all 0.3s ease;
-
-        &:hover {
-          background: rgba(255, 255, 255, 0.25);
-          transform: translateY(-2px);
-          box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
-        }
-
-        .user-avatar {
-          img {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.5);
-            object-fit: cover;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s ease;
-
-            &:hover {
-              border-color: rgba(255, 255, 255, 0.8);
-              transform: scale(1.05);
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-.workspace-main {
-  display: flex;
-  flex: 1;
-  height: calc(100vh - 64px);
-  background-color: #ffffff;
-
-  .sidebar {
-    height: 100%;
-    width: 280px;
-    background-color: #ffffff;
-    border-right: 1px solid #e9ecef;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
-
-    .create-section {
-      padding: 20px 16px;
-
-      .create-btn-native {
-        width: 100%;
-        height: 48px;
-        border-radius: 8px;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        background: white;
-        color: #3b82f6;
-        border: 2px solid #3b82f6;
-        cursor: pointer;
-        font-size: 15px;
-        font-family: 'PingFang SC', 'Microsoft YaHei UI', 'Source Han Sans CN', 'Noto Sans CJK SC', sans-serif;
-        letter-spacing: 1px;
-
-        &:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-          background: #eff6ff;
-        }
-
-        &:active {
-          transform: translateY(0);
-        }
-
-        .btn-content {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-
-          .icon {
-            font-size: 20px;
-          }
-        }
-      }
-    }
-
-    .session-list {
-      flex: 1;
-      padding: 8px;
-      overflow-y: auto;
-
-      .loading-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 200px;
-        color: #3b82f6;
-
-        .loading-icon {
-          font-size: 48px;
-          margin-bottom: 16px;
-          animation: spin 1s linear infinite;
-        }
-
-        .loading-text {
-          font-size: 14px;
-          color: #6b7280;
-        }
-      }
-
-      .empty-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 200px;
-        color: #9ca3af;
-
-        .empty-icon {
-          font-size: 48px;
-          margin-bottom: 16px;
-        }
-
-        .empty-icon-img {
-          width: 60px;
-          height: 60px;
-          margin-bottom: 16px;
-          object-fit: contain;
-          opacity: 0.9;
-        }
-
-        .empty-text {
-          font-size: 16px;
-          font-weight: 600;
-          color: #6b7280;
-          letter-spacing: 0.2px;
-          margin-bottom: 8px;
-        }
-
-        .empty-hint {
-          font-size: 12px;
-          color: #d1d5db;
-        }
-      }
-
-      .session-card {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 16px;
-        margin-bottom: 8px;
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        position: relative;
-
-        &:hover {
-          border-color: #667eea;
-          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
-          transform: translateY(-2px);
-
-          .delete-btn {
-            opacity: 1;
-          }
-        }
-
-        &.active {
-          border-color: #667eea;
-          background-color: #eff6ff;
-        }
-
-        .session-icon {
-          width: 28px;
-          height: 28px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #eef4ff;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          flex-shrink: 0;
-
-          img {
-            width: 18px;
-            height: 18px;
-          }
-        }
-
-        .session-info {
-          flex: 1;
-          min-width: 0;
-
-          .session-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: #1f2937;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            margin-bottom: 4px;
-          }
-
-          .session-time {
-            font-size: 11px;
-            color: #9ca3af;
-          }
-        }
-
-        .delete-btn {
-          position: absolute;
-          top: 8px;
-          right: 8px;
-          width: 24px;
-          height: 24px;
-          padding: 0;
-          background: rgba(255, 255, 255, 0.9);
-          border: 1px solid #e5e7eb;
-          cursor: pointer;
-          border-radius: 4px;
-          transition: all 0.2s ease;
-          font-size: 18px;
-          opacity: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: #6b7280;
-
-          &:hover {
-            background: #fee2e2;
-            color: #dc2626;
-            border-color: #dc2626;
-          }
-
-          &:active {
-            transform: scale(0.95);
-          }
-        }
-      }
-    }
-  }
-
-  .content {
-    flex: 1;
-    min-height: 0;
-    background-color: #ffffff;
-    border-radius: 0;
-    margin: 0;
-    box-shadow: none;
-    border-left: 1px solid #e9ecef;
-    overflow: hidden;
-  }
-}
-
-// 动画
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-// 下拉菜单样式
-:deep(.el-dropdown-menu) {
-  border: none;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-  border-radius: 8px;
-  overflow: hidden;
-  
-  .el-dropdown-menu__item {
-    padding: 12px 16px;
-    font-size: 14px;
-    
-    &:hover {
-      background-color: #f5f7fa;
-      color: #409eff;
-    }
-    
-    .el-icon {
-      margin-right: 8px;
-    }
-  }
-}
-
-// 响应式设计
-@media (max-width: 768px) {
-  .workspace-nav {
-    .nav-left {
-      .logo-section {
-        .brand-name {
-          display: none;
-        }
-      }
-    }
-  }
-
-  .workspace-main {
-    .sidebar {
-      width: 240px;
-    }
-
-    .content {
-      margin: 0;
-    }
-  }
-}
-
-@media (max-width: 480px) {
-  .workspace-nav {
-    padding: 0 12px;
-  }
-
-  .workspace-main {
-    flex-direction: column;
-
-    .sidebar {
-      width: 100%;
-      height: auto;
-      max-height: 300px;
-    }
-
-    .content {
-      flex: 1;
-      margin: 0;
-    }
-  }
+.workspace-container { width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; background: #fff; }
+.workspace-main { display: flex; flex: 1; min-height: 0; }
+.sidebar { width: 260px; flex-shrink: 0; min-height: 0; display: flex; flex-direction: column; border-right: 1px solid #e9ecef; }
+.create-section { padding: 20px 16px 16px; }
+.module-title { margin-bottom: 14px; font-size: 16px; font-weight: 600; color: #202124; }
+.create-btn-native { width: 100%; height: 44px; border: 1px solid #d8e3f5; border-radius: 10px; background: #edf4ff; color: #315f9c; cursor: pointer; }
+.btn-content { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.icon { font-size: 20px; }
+.history-filters { display: flex; gap: 4px; padding: 12px 12px 4px; }
+.history-filters button { flex: 1; border: 0; border-radius: 7px; padding: 7px 0; background: transparent; color: #777; cursor: pointer; }
+.history-filters button.active { background: #edf2fa; color: #315f9c; font-weight: 600; }
+.history-error { padding: 12px; color: #985b2e; font-size: 12px; display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.history-error button { border: 0; padding: 3px 6px; background: transparent; color: #315f9c; cursor: pointer; white-space: nowrap; }
+.session-list { flex: 1; min-height: 0; padding: 12px 8px; overflow-y: auto; }
+.session-list-label { padding: 2px 10px 10px; font-size: 12px; color: #9a9a9f; }
+.empty-state { padding: 40px 8px; text-align: center; font-size: 13px; color: #8c8c96; }
+.session-card { display: flex; align-items: center; gap: 8px; padding: 12px; margin-bottom: 5px; border: 1px solid transparent; border-radius: 10px; cursor: pointer; }
+.session-card:hover { background: #f6f7f9; }
+.session-card.active { background: #edf2fa; border-color: #dce6f6; }
+.session-info { flex: 1; min-width: 0; }
+.session-title { color: #33343a; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 5px; }
+.session-mode { font-size: 11px; color: #788496; }
+.session-mode.lingseek { color: #8069a7; }
+.session-more-btn { display: flex; align-items: center; justify-content: center; width: 24px; height: 26px; border: 0; border-radius: 5px; background: transparent; color: #777; cursor: pointer; }
+.session-more-btn:hover { background: #e6e8ed; }
+.content { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+@media (max-width: 640px) {
+  .module-title, .history-filters, .session-list-label { display: none; }
+  .history-error { display: block; padding: 4px; font-size: 10px; }
 }
 </style>

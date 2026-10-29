@@ -48,9 +48,11 @@
 
 ### 工作台 SSE 与注册任务
 
-`POST /api/v1/workspace/simple/chat` 使用 [WorkSpaceSimpleTask](../../src/backend/agentruler/schemas/workspace.py)：`query`、`model_id`、`session_id` 必填，`plugins`、`mcp_servers` 默认为空列表。模型、工具和会话数据需来自隔离测试环境。
+`POST /api/v1/workspace/simple/chat` 使用 [WorkSpaceSimpleTask](../../src/backend/agentruler/schemas/workspace.py)：`query`、`session_id` 必填；`agent_id`、`model_id`、`plugins`、`mcp_servers` 可选。2026-10-27 CONV-001 增量：不传 `agent_id` 时沿用上轮，显式 `null` 切回通用助手；模型/工具/MCP 未传或为 `null` 时沿用同一智能体的上轮配置，否则使用智能体默认，空列表表示清空。最终必须有可见的 LLM。新前端每轮显式发送完整选择。选择智能体复用 GeneralAgent，覆盖模型、工具和 MCP；提示词、知识库、Skill、记忆开关沿用原定义，不修改智能体。
 
-工作台流中的 JSON 使用 `event`、`data`，与普通聊天的 `type` 格式不同。现有事件有 `reasoning_chunk`（`data.chunk`）、`task_result`（`data.message`）和 `mcp_tool`（执行状态等）；客户端按当前工作台实现消费，不应通用套用聊天解析器。会话在执行链中保存；独立 `POST /workspace/session` 当前为 `pass`。
+工作台流中的 JSON 使用 `event`、`data`，与普通聊天的 `type` 格式不同。事件包括 `reasoning_chunk`（`data.chunk`）、`task_result`（`data.message`）、`mcp_tool`（执行状态等）和 `agent_event`（`data.title/message/status`，智能体工具进度）。流中失败返回安全的 `error` 事件；正常生成且上下文保存后返回 `done`（`data.session_id`）。新日常前端只有收到 `done` 才确认成功，缺少标记的 EOF 视为中断；发生错误或取消不会自动重放请求。此标记仅属于日常工作台链路，其他 SSE 不套用。每轮 `contexts[].config` 保存 `agent_id/model_id/plugins/mcp_servers`，`agent_events` 保存通用进度；独立 `POST /workspace/session` 仍为 `pass`，前端由首轮成功生成创建会话。
+
+工作台详情/续写/删除按当前用户检查会话所有权，详情不存在为 HTTP 404，无权访问为 403；日常链路拒绝在 LingSeek 会话中续写（409），校验模型、工具、MCP 及智能体关联资源的可见性。旧 `/history`、`/completion`、删除 `/dialog` 增加或保留所有者检查，404/403 保持 HTTP 状态，不改为普通成功响应；旧 `/completion` 复用同一关联资源校验，保留旧智能体空 `llm_id` 使用系统默认模型的兼容行为。`GET /dialog/list` 保留对话自身标题和时间，仅附加 `agent_name`、`logo_url` 展示字段。
 
 注册任务 `/api/v1/mcp/register/completion` 及 HITL approve/reject 也返回 SSE，使用该模块自己的事件与结束处理。不要假定所有流都有同一个 DONE 帧，详见[注册流实现](../../src/backend/agentruler/api/v1/register_mcp_completion.py)。
 

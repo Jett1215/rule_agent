@@ -133,6 +133,60 @@ docker compose --env-file docker/.env -f docker/docker-compose.production.yml \
 
 结论：本次已批准范围全部完成，无阻塞；真实 Jev/收益、完整跨模块及浏览器验收、访问控制专项、恢复/回滚等仍是后续候选和验证边界，不作为本轮未完成事项。下一轮先完成 BASE-001 的范围确认；若用户选择 JEV-001，再明确对照样本、数据发送范围、费用和环境。本轮没有启用 Jev、执行恢复、清理已有备份或删除本机配置/数据。
 
+## 2026-10-27 会话模块合并
+
+任务：CONV-001；需求 REQ-011，验收 AC-026～AC-028。用户确认合并方案并要求参考《02-日常恢复Prompt.doc》完成前置工作、开发、测试与项目状态更新。文档使用 `textutil -convert txt -stdout` 只读提取；按本次请求加载 AGENTS、状态、任务、计划及对应需求/架构/验收，不因通用恢复文档启动其他候选任务。开始时 `main` 工作区干净，HEAD 为 `f3a4ffd`。
+
+已实现统一会话入口、日常/灵寻两模式、混合历史和旧路由；新日常会话选择模型/工具/MCP/智能体并保存和恢复本次配置；旧智能体会话沿原配置继续使用，提供另开可配置会话的入口。后端复用现有 Agent，配置使用已有 JSON 列，补充新旧会话所有者/资源检查、行锁内追加校验、完成标记及取消清理。没有修改表结构、项目依赖/锁文件、真实配置或生产数据，没有提交、推送或部署。长期兼容取舍见 [ADR 0001](adr/0001-conversation-module-compatibility.md)。
+
+环境：本机 macOS；前端 Node `26.0.0`、npm `11.12.1` 与已安装锁文件依赖（未重装，未验证 Node 20）；后端临时环境 `/private/tmp/agentruler-jev-switch-venv`，Python `3.13.5`、FastAPI `0.121.0`、SQLModel `0.0.27`、LangChain `1.2.15`、langchain-core `1.2.28`、httpx `0.28.1`。补装的 FastAPI/SQLModel 仅用于临时隔离环境；未修改项目依赖。测试先检查导入边界，未启动正式 FastAPI lifespan 或连接真实数据库、模型、MCP、记忆存储。
+
+| 检查 | 实际命令及工作目录 | 状态 | 结果和证据 |
+| --- | --- | --- | --- |
+| 前端定向测试 | `npm test`；`src/frontend` | PASS | 20/20：混合历史、来源 ID 冲突、排序、旧链接、历史响应竞争、配置继承和恢复、三类 SSE 的错误/取消，以及日常缺少 done 的截断流 |
+| 现有 lint 脚本 | `npm run lint`；`src/frontend` | PASS（仅命令） | 退出 0；根 TS 配置 `files: []` + references 下没有遍历应用源码，不能称全量类型通过 |
+| 实际应用类型检查 | `./node_modules/.bin/vue-tsc --noEmit -p tsconfig.app.json`；`src/frontend` | FAIL（既有问题） | 退出 2，共 24 项诊断；将 `f3a4ffd` 前端源码只读导出到临时目录，用同一依赖检查，诊断与当前逐字相同，无本次新增。日志 `/tmp/agentruler-conversation-types-baseline.txt`、`/tmp/agentruler-conversation-types-current.txt` |
+| 前端构建 | `npm run build`；`src/frontend` | PASS | 最终退出 0，33.23 秒；日志 `/tmp/agentruler-conversation-build-final.log`。保留 Sass 旧接口、Mars eval 与包大小警告，未扩大为构建优化任务 |
+| 后端定向和回归 | `/private/tmp/agentruler-jev-switch-venv/bin/python -m unittest agentruler.test.test_workspace_chat agentruler.test.test_jev_decisions agentruler.test.test_jev_middleware agentruler.test.test_jev_workspace`；`src/backend` | PASS | 53/53（22 项新增会话测试 + 31 项 Jev 回归）；最终日志 `/tmp/agentruler-conversation-backend-final.log` |
+| Python 编译 | 同一 Python 对 13 个变更 `.py` 执行 `py_compile.compile(..., doraise=True)`；仓库根目录 | PASS | 退出 0；只编译，不导入应用或初始化数据库 |
+| 构建产物浏览器冒烟 | `node /tmp/agentruler-conversation-ui/run.mjs`；本机临时目录 | PASS | 15/15，使用已有缓存 Playwright 和全新无头 Chrome context、自托管 dist 和同源 Mock API；拦截外部资源，不使用用户浏览器会话。最终构建复验及哈希见下文 |
+| 文档和差异 | 临时 Python 静态脚本、`git diff --check`；仓库根目录 | PASS | 13 份变更 Markdown、263 处本地路径引用均存在，代码围栏闭合；差异检查退出 0。摘要 `/tmp/agentruler-conversation-doc-check.json` |
+
+后端新增测试使用真实 Pydantic/SQLModel 请求与上下文模型、实际业务方法、FastAPI ASGI 路由，DAO、模型、MCP 和记忆使用受控桩。覆盖智能体定义不变、默认及空覆盖、配置 JSON 保存、历史输入、记忆命名空间、模型/工具/MCP/知识库/Skill 拒绝、本人对话关联他人智能体拒绝、旧对话所有权、列表字段不被智能体覆盖、事务内所有者复核、错误与关闭流不发 done、嵌套生成器和后台标题任务清理；另验证实际 MCP 参数合并与嵌套脱敏方法。Jev 回归保持原有禁用/观察/执行、上下文、候选与回退断言，不连接真实判别服务。
+
+浏览器 15 组覆盖：单入口与两模式、历史来源冲突/排序/筛选、智能体继承和清空覆盖、刷新恢复/续聊、旧配置提示及新建重置、旧链接/旧智能体续聊、正确来源删除/删除当前、单源列表失败重试、HTTP 错误、业务 error、HTTP 200 非 SSE、无 done 截断、不可读历史与已删除模型阻止发送、停止生成、流中切历史隔离、LingSeek 指导手册/返回/旧历史。分组和逐项结果保存在临时报告，截图已检查可读性；这些是 Mock 界面验证，不是真实服务端到端。
+
+最终产物复验为 15 PASS/0 FAIL、退出 0，Chrome `156.0.8078.48`；`/tmp/agentruler-conversation-ui/result.json` 的 `dist/index.html` SHA256 为 `5d60bd07eb356d4a013ec3e82b8b3d6d0d091de24f266efdc9d62fbc8601920c`，与最终构建一致。截图 `01-unified-module.png`、`02-agent-conversation.png`、`03-lingseek-history.png`、`04-mobile-module.png` 位于同目录，桌面及 390×844 下正文和配置可读。窄屏历史列表隐藏来自既有 `preview-theme.css`，已用 `git show HEAD` 核实，未将其写成此次回归修复。
+
+保留的失败与修正：首个 npm 命令误在仓库根目录执行，因没有 package.json 退出 254，随后在正确前端目录通过；临时类型基线提取脚本最初使用系统 Python 3.9 不支持的 tarfile 参数，修正安全路径检查后成功。一次中间构建因新增样式位于 Sass `@use` 前失败，调整顺序后最终构建通过，原日志 `/tmp/agentruler-conversation-build-sass-failure.log`。浏览器夹具最初使用不存在头像导致加载等待，修正假图片后运行；首个可执行产物报告为 9 PASS/2 FAIL，分别是测试选到 Element Plus 隐藏菜单、过期产物尚无灵寻返回入口，修正选择器并重建后全通过，原报告 `/tmp/agentruler-conversation-ui/first-build-result.json`。额外尝试原 `test_workspace_mcp_arguments` 时，临时环境缺 `pytz` 导入失败，不记通过；最终新增隔离测试直接验证相同实际辅助方法。
+
+未执行：真实数据库写入/并发/备份恢复，真实模型、MCP、知识库和长期记忆调用，生产浏览器回归、部署、性能或完整 SEC-001 权限矩阵。新前端依赖日常 SSE 的 done，后续发布须前后端配套；旧智能体历史可继续交流，模型/工具/MCP 的本次覆盖应用于新日常会话。现有 24 项应用类型诊断及 lint 入口问题单独跟踪，不将其记为已修复或通过。
+
+## 2026-10-29 本地容器更新
+
+任务：LOCAL-UPDATE-001，关联 REQ-009、REQ-011。用户发现 `http://localhost:8090` 仍为旧版后明确授权更新本地前后端。原因是 Docker 镜像包含旧源码且没有源码挂载；此前 CONV-001 的本地实现和隔离测试未替换运行容器。本次使用 `main` 的 `f3a4ffd` 加已有未提交工作区构建，没有提交、推送或访问生产服务器。
+
+环境为本机 macOS、Docker Desktop、Compose `5.5.1`，沿用本地项目 `docker`。开始时 Docker 未运行，启动 Desktop 后记录五个既有容器快照；以下“基础服务未重启”指此快照至应用替换完成期间 MySQL、Redis、MinIO 的 ID、镜像、启动时间和挂载均未改变。后端为 `linux/amd64`，按现有 `uv.lock` 冻结安装；没有修改项目依赖、锁文件或真实配置。开发 Compose 新增 `/app/memory_db` 持久化挂载，替换前停止后端、提取旧容器数据到此前不存在的宿主机 `docker/data/memory_db`，核对逐文件哈希后再启动。
+
+| 检查 ID | 实际方法与命令 | 状态 | 结果与边界 |
+| --- | --- | --- | --- |
+| LOCAL-CHECK-001 | 容器/挂载快照、配置 SHA-256、配置备份及旧镜像标签；`compose config --quiet` | PASS | 五个容器归属原项目 `docker`，真实 YAML 仍只读挂载；保存两份配置和两应用旧镜像标签，没有输出密钥 |
+| LOCAL-CHECK-002 | `docker compose -p docker -f docker/docker-compose.yml build backend frontend`；仓库根目录 | PASS | 两应用镜像构建退出 0；后端依赖缓存未命中，重新按锁文件安装，未将构建时间当作运行性能结果；完整日志受控保存 |
+| LOCAL-CHECK-003 | 新后端镜像 `docker run --rm --network none --entrypoint python docker-backend:latest -m unittest agentruler.test.test_workspace_chat agentruler.test.test_jev_decisions agentruler.test.test_jev_middleware agentruler.test.test_jev_workspace` | PASS | 53/53、退出 0（测试执行 1.011 秒）；不挂载真实配置/数据库，模型、工具、MCP 等仍为隔离桩 |
+| LOCAL-CHECK-004 | 停止两应用；MySQL 单事务 dump、复制向量/记忆、核对哈希，再 `up -d --no-deps --no-build backend frontend` | PASS | MySQL 备份 426625 字节；记忆 1 文件、向量 5 文件；记忆复制到持久化目录后与备份一致。仅重建两应用，无表迁移或数据清理 |
+| LOCAL-CHECK-005 | 逐文件 SHA-256、配置校验、容器 inspect、启动日志固定标记 | PASS | 134 个前端源文件及 401 个后端 Python 文件与工作区一致；配置字节未变，记忆挂载有效；两应用 healthy，数据库/runtime/ASGI startup 成功且无对应初始化失败标记；基础三服务快照一致 |
+| LOCAL-CHECK-006 | 初始化后再次单事务 dump，仅在内存中比较各表 INSERT 内容 | PASS | 前后均有 16 张含数据的表，16/16 内容一致；不输出记录、密钥或消息，不将此比较视作恢复演练 |
+| LOCAL-CHECK-007 | `node /tmp/agentruler-local-update-checks/check.mjs`；实际 8090/7860 HTTP 与全 Mock API 浏览器冒烟 | PASS | 6/6、退出 0；实际 Vite 代码含新菜单/路由/配置/完成标记，后端 health/OpenAPI 配套、无凭据历史请求被拒绝；浏览器验证两模式、旧 workspace 链接、Agent 继承及 Mock SSE done、LingSeek 进入/返回；无未模拟 API、无 pageerror |
+| LOCAL-CHECK-008 | 临时 `docs-check.py`、Markdown 链接/围栏及 `git diff --check`；仓库根目录 | PASS | 15 份变更 Markdown 的相对路径/标题锚点及围栏检查通过，差异无空白错误；暂存区保持为空，详细计数见受控 `docs-check.json` |
+
+本次运行前端镜像 `sha256:f22fc266c78b57c6e7c0609202d80b85f91acc09c0f3cdba5ad8d32ce7873a1b`、后端镜像 `sha256:78dde5900c64793868ae7f1a388c719fd7ec3a4caca24ea082694ed95f763c0d`。旧镜像标签为 `agentruler-frontend:local-before-20261029-1115` 和 `agentruler-backend:local-before-20261029-1115`，如需恢复应用，应备份新增数据并通过本地 Compose override 成对指定旧镜像，不删除数据卷或覆盖现有配置。本次没有执行回滚或数据库恢复。
+
+受保护备份与证据目录为本机 `/private/tmp/agentruler-local-update-20261029-1115`（权限 0700），包括 `before.json`、`after.json`、`build.log`、`image-tests.log`、配置备份、SQL、向量/记忆、`data-manifests.json`、`backups-complete.json`、`startup-summary.json` 和 `mysql-row-comparison.json`。配置与数据含敏感信息，不进入 Git 或公开附件；临时目录不替代长期/异地备份。
+
+浏览器证据位于 `/tmp/agentruler-local-update-checks/result.json`、`run.log` 和 `01-live-new-module.png`，使用 Node `26.0.0`、Chrome `156.0.8078.48` 的全新 context；截图已检查，新菜单、日常/灵寻切换及模型/工具/MCP/智能体选择可读。业务 API 全部拦截模拟，直接访问真实后端仅 GET 健康/OpenAPI 和无凭据拒绝检查，没有登录或业务写入。容器实际源码哈希与页面检查共同确认 8090 已更新，不能据此宣称真实模型/MCP 端到端通过。
+
+过程中曾因 Docker 尚未启动而连接 socket 失败，启动后重试成功；一次临时脚本 `py_compile` 被系统缓存目录权限阻止，指定临时缓存后检查通过。两者不记作应用测试失败。前述 CONV-001 的 24 项既有应用类型诊断仍未修复，未重复宣称类型检查通过；本轮未进行真实账号登录、模型/MCP/知识库对话、恢复/回滚、生产部署或完整业务端到端验收。
+
 ## 后续记录模板
 
 每次追加验证记录时写明日期、任务/需求/验收 ID、代码提交与工作区情况、工具版本、工作目录、实际命令、测试数据与预期、退出码及实际结果，附仓库内脱敏日志或受控证据位置。外部日志不得泄露凭据、原始用户消息或私有配置。

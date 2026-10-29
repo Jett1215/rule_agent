@@ -14,6 +14,8 @@ import { getWorkspaceSessionInfoAPI } from '../../../apis/workspace'
 
 const route = useRoute()
 const router = useRouter()
+const pageController = new AbortController()
+const returnToConversations = () => router.push({ name: 'workspaceDefaultPage', query: { mode: 'lingseek' } })
 
 interface GraphNode {
   start: string
@@ -56,14 +58,8 @@ const guideScrollContainer = ref<HTMLElement | null>(null)
 
 // 启动结果接收并流式回放缓冲
 const startReceivingResults = () => {
-  console.log('🚀 [startReceivingResults] 被调用')
-  console.log('  - isReceivingResult:', isReceivingResult.value)
-  console.log('  - showTaskResult:', showTaskResult.value)
-  console.log('  - resultBuffer 长度:', resultBuffer.value.length)
-  console.log('  - resultBuffer 前100字符:', resultBuffer.value.substring(0, 100))
   
   if (isReceivingResult.value) {
-    console.log('⚠️ [startReceivingResults] 已在接收中，跳过')
     return
   }
   isReceivingResult.value = true
@@ -71,19 +67,13 @@ const startReceivingResults = () => {
     showTaskResult.value = true
   }
   // ElMessage.success('开始接收任务结果')
-  console.log('✅ [startReceivingResults] 状态已更新，准备启动排空')
   // 启动排空
   startDrain()
 }
 
 const startDrain = () => {
-  console.log('🔄 [startDrain] 被调用')
-  console.log('  - isDraining:', isDraining.value)
-  console.log('  - drainTimer:', drainTimer)
-  console.log('  - resultBuffer 长度:', resultBuffer.value.length)
   
   if (isDraining.value) {
-    console.log('⚠️ [startDrain] 已在排空中，跳过')
     return
   }
   isDraining.value = true
@@ -92,11 +82,9 @@ const startDrain = () => {
     drainTimer = null
   }
   
-  console.log('✅ [startDrain] 开始设置定时器，间隔:', drainIntervalMs, 'ms，块大小:', drainChunkSize)
   const tick = () => {
     if (!resultBuffer.value.length) {
       // 缓冲已空，结束接收
-      console.log('⏹️ [tick] 缓冲已空，结束接收')
       if (drainTimer !== null) {
         window.clearInterval(drainTimer)
         drainTimer = null
@@ -109,11 +97,9 @@ const startDrain = () => {
     const chunk = resultBuffer.value.slice(0, drainChunkSize)
     resultBuffer.value = resultBuffer.value.slice(drainChunkSize)
     taskResultContent.value += chunk
-    console.log('📤 [tick] 输出块:', chunk.length, '字符，剩余缓冲:', resultBuffer.value.length, '，当前总内容:', taskResultContent.value.length)
     scrollResultToBottom()
   }
   drainTimer = window.setInterval(tick, drainIntervalMs)
-  console.log('✅ [startDrain] 定时器已启动，ID:', drainTimer)
 }
 
 // 指导手册编辑/预览切换（默认预览）
@@ -290,10 +276,6 @@ const getEdgePath = (edge: { from: string; to: string }) => {
 
 // 生成指导手册
 const generateGuidePrompt = async () => {
-  console.log('=== 开始生成指导手册 ===')
-  console.log('用户问题:', originalParams.value.query)
-  console.log('选中工具:', originalParams.value.tools)
-  console.log('联网搜索:', originalParams.value.web_search)
   
   guidePrompt.value = ''
   isGeneratingGuide.value = true
@@ -308,24 +290,23 @@ const generateGuidePrompt = async () => {
       },
       (data) => {
         // 处理流式数据
-        console.log('📨 接收到指导手册数据块')
         guidePrompt.value += data
         // 自动滚动到底部
         scrollGuideToBottom()
       },
       (error) => {
-        console.error('❌ 生成指导手册出错:', error)
+        console.error('❌ 生成指导手册出错:')
         ElMessage.error('生成指导手册失败')
         isGeneratingGuide.value = false
       },
       () => {
-        console.log('✅ 指导手册生成完成')
         isGeneratingGuide.value = false
         ElMessage.success('指导手册生成完成')
-      }
+      },
+      pageController.signal
     )
   } catch (error) {
-    console.error('生成指导手册异常:', error)
+    console.error('生成指导手册异常:')
     ElMessage.error('生成指导手册失败')
     isGeneratingGuide.value = false
   }
@@ -350,8 +331,6 @@ const handleConfirmRegenerate = async () => {
     return
   }
 
-  console.log('=== 开始重新生成指导手册 ===')
-  console.log('反馈内容:', feedbackText.value)
 
   // 保存当前的指导手册
   const currentGuidePrompt = guidePrompt.value
@@ -377,19 +356,19 @@ const handleConfirmRegenerate = async () => {
         scrollGuideToBottom()
       },
       (error) => {
-        console.error('❌ 重新生成指导手册出错:', error)
+        console.error('❌ 重新生成指导手册出错:')
         ElMessage.error('重新生成失败')
         isGeneratingGuide.value = false
       },
       () => {
-        console.log('✅ 指导手册重新生成完成')
         isGeneratingGuide.value = false
         feedbackText.value = ''
         ElMessage.success('指导手册重新生成完成')
-      }
+      },
+      pageController.signal
     )
   } catch (error) {
-    console.error('重新生成指导手册异常:', error)
+    console.error('重新生成指导手册异常:')
     ElMessage.error('重新生成失败')
     isGeneratingGuide.value = false
   }
@@ -402,24 +381,19 @@ const handleStartTask = () => {
     return
   }
 
-  console.log('🚀 开始执行任务')
   // 将当前指导手册内容同步到任务参数
   taskParams.value.guide_prompt = guidePrompt.value
-  console.log('✅ 已同步指导手册到任务参数，长度:', taskParams.value.guide_prompt.length)
   startTask()
 }
 
 
 // 初始化
 onMounted(async () => {
-  console.log('=== taskGraphPage onMounted ===')
-  console.log('路由参数:', route.query)
   
   const sessionId = route.query.session_id as string
   
   if (sessionId) {
     // 历史会话模式：加载历史数据
-    console.log('历史会话模式，session_id:', sessionId)
     isHistoryMode.value = true
     await loadSessionInfo(sessionId)
     
@@ -427,7 +401,6 @@ onMounted(async () => {
     // 不清理 URL，方便用户分享和刷新
   } else {
     // 新任务模式：生成指导手册
-    console.log('新任务模式')
     
     // 保存参数
     originalParams.value.query = route.query.query as string || ''
@@ -444,23 +417,17 @@ onMounted(async () => {
     taskParams.value.plugins = originalParams.value.plugins
     taskParams.value.mcp_servers = originalParams.value.mcp_servers
     
-    console.log('✅ 用户问题:', originalParams.value.query)
-    console.log('✅ 选中工具:', originalParams.value.tools)
-    console.log('✅ 联网搜索:', originalParams.value.web_search)
     
-    // 清理 URL 参数（保留功能，隐藏参数）
-    router.replace({ path: '/workspace/taskGraph' })
+    // 保留新任务参数，刷新时仍能恢复指导手册生成入口。
     
     // 自动开始生成指导手册
     if (originalParams.value.query) {
-      console.log('🚀 开始自动生成指导手册...')
       await generateGuidePrompt()
     } else {
       console.warn('⚠️ 缺少用户问题，无法生成指导手册')
     }
   }
   
-  console.log('=== taskGraphPage onMounted 结束 ===')
 })
 
 // 加载历史会话信息
@@ -469,40 +436,30 @@ const loadSessionInfo = async (sessionId: string) => {
     isHistoryMode.value = true
     const response = await getWorkspaceSessionInfoAPI(sessionId)
     
-    console.log('📦 会话信息响应:', response.data)
     
     if (response.data.status_code === 200) {
       const sessionData = response.data.data
-      console.log('📦 会话数据:', sessionData)
       
       // 加载历史上下文
       if (sessionData.contexts && Array.isArray(sessionData.contexts) && sessionData.contexts.length > 0) {
         historyContexts.value = sessionData.contexts
-        console.log('📦 contexts 数组:', historyContexts.value)
         
         // 获取第一个context（最新的数据）
         const context = historyContexts.value[0]
-        console.log('📦 当前 context:', context)
         
         // 显示指导手册（对应第一列）
         if (context.guide_prompt) {
           guidePrompt.value = context.guide_prompt
-          console.log('✅ 指导手册已加载，长度:', guidePrompt.value.length)
         } else {
           console.warn('⚠️ 未找到 guide_prompt 字段')
         }
         
         // 显示任务图（对应第二列）- 使用 task_graph 字段
-        console.log('🔍 检查 task_graph 字段:', context.task_graph)
-        console.log('🔍 task_graph 类型:', typeof context.task_graph)
-        console.log('🔍 是否为数组:', Array.isArray(context.task_graph))
         
         if (context.task_graph && Array.isArray(context.task_graph) && context.task_graph.length > 0) {
-          console.log('✅ 任务图数据 (task_graph):', JSON.stringify(context.task_graph, null, 2))
           
           // task_graph 已经是 { start, end } 格式，直接使用
           taskGraph.value = context.task_graph
-          console.log('✅ 加载的任务图:', taskGraph.value)
           
           // 初始化节点状态（历史模式下所有节点都是已完成）
           const nodeSet = new Set<string>()
@@ -511,7 +468,6 @@ const loadSessionInfo = async (sessionId: string) => {
             nodeSet.add(edge.end)
           })
           
-          console.log('✅ 提取的节点集合:', Array.from(nodeSet))
           
           // 所有节点标记为已完成
           nodeSet.forEach((nodeId: string) => {
@@ -519,7 +475,6 @@ const loadSessionInfo = async (sessionId: string) => {
           })
           
           showGraph.value = true
-          console.log('✅ 任务图已显示，showGraph:', showGraph.value)
         } else {
           console.warn('⚠️ 未找到 task_graph 字段或为空数组')
           console.warn('⚠️ context 完整内容:', JSON.stringify(context, null, 2))
@@ -529,7 +484,6 @@ const loadSessionInfo = async (sessionId: string) => {
         if (context.answer) {
           taskResultContent.value = context.answer
           showTaskResult.value = true
-          console.log('✅ 执行结果已加载，长度:', taskResultContent.value.length)
         } else {
           console.warn('⚠️ 未找到 answer 字段')
         }
@@ -541,7 +495,7 @@ const loadSessionInfo = async (sessionId: string) => {
       ElMessage.error('获取会话信息失败')
     }
   } catch (error) {
-    console.error('❌ 加载会话信息出错:', error)
+    console.error('❌ 加载会话信息出错:')
     ElMessage.error('加载会话信息出错')
   }
 }
@@ -572,6 +526,7 @@ const closeNodeDetail = () => {
 }
 
 onBeforeUnmount(() => {
+  pageController.abort()
   if (drainTimer !== null) {
     window.clearInterval(drainTimer)
     drainTimer = null
@@ -601,7 +556,6 @@ const scrollGuideToBottom = () => {
 
 // 开始执行任务
 const startTask = async () => {
-  console.log('开始执行任务')
   
   taskGraph.value = []
   nodeStatusMap.value.clear()
@@ -624,7 +578,6 @@ const startTask = async () => {
       taskParams.value,
       (data) => {
         // 通用文本 chunk：统一进入缓冲；若处于接收阶段，确保排空
-        console.log('📨 接收到文本数据:', data)
         if (typeof data === 'string' && data) {
           resultBuffer.value += data
           if (isReceivingResult.value && !isDraining.value) {
@@ -634,7 +587,6 @@ const startTask = async () => {
       },
       (graph) => {
         // 处理任务图数据
-        console.log('📊 接收到任务图数据:', graph)
         taskGraph.value = graph
         
         // 初始化所有节点状态
@@ -671,13 +623,11 @@ const startTask = async () => {
       },
       (stepData) => {
         // 处理步骤执行结果
-        console.log('✅ 收到步骤结果:', stepData)
         updateNodeStatus(stepData.title, 'completed', stepData.message)
         ElMessage.success(`节点「${stepData.title}」执行完成`)
       },
       (messageChunk) => {
         // 统一写入缓冲。若尚未开始接收（通常为首个 task_result 到达），立即启动接收与排空
-        console.log('📄 收到任务结果数据块:', messageChunk)
         if (typeof messageChunk === 'string') {
           resultBuffer.value += messageChunk
         }
@@ -690,19 +640,20 @@ const startTask = async () => {
         }
       },
       (error) => {
-        console.error('❌ 任务执行出错:', error)
+        console.error('❌ 任务执行出错:')
         ElMessage.error('任务执行失败')
         isStreaming.value = false
       },
       () => {
-        console.log('✅ 任务执行完成')
+        window.dispatchEvent(new CustomEvent('conversation-updated'))
         isStreaming.value = false
         // 任务流程结束时，开启接收阶段并以流式回放缓冲
         startReceivingResults()
-      }
+      },
+      pageController.signal
     )
   } catch (error) {
-    console.error('任务执行异常:', error)
+    console.error('任务执行异常:')
     ElMessage.error('请求失败，请检查网络连接')
     isStreaming.value = false
   }
@@ -723,7 +674,8 @@ const getNodeColor = (status: string) => {
 </script>
 
 <template>
-  <div class="task-graph-page" :key="String(route.query.session_id || route.query.query || Date.now())">
+  <div class="task-graph-page">
+    <div class="conversation-return"><button @click="returnToConversations">← 返回会话模块</button><span>灵寻 LingSeek</span></div>
     <!-- 三列布局容器 -->
     <div class="three-column-layout">
       <!-- 第一列：指导手册 -->
@@ -1036,6 +988,8 @@ const getNodeColor = (status: string) => {
 
 <style lang="scss" scoped>
 @use "sass:color";
+.conversation-return { flex-shrink: 0; display: flex; align-items: center; gap: 20px; padding: 12px 20px; border-bottom: 1px solid #e5e7eb; background: #fff; color: #6c5c8f; font-size: 14px; }
+.conversation-return button { border: 1px solid #e1e3e9; border-radius: 8px; background: #fff; color: #55586a; padding: 8px 12px; cursor: pointer; }
 // 全局颜色变量
 $primary-start: #06b6d4;
 $primary-end: #3b82f6;
@@ -1047,6 +1001,8 @@ $warning: #f59e0b;
 $error: #ef4444;
 
 .task-graph-page {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100vh;
   background: linear-gradient(135deg, #ffffff 0%, #f0f9ff 50%, #ffffff 100%);
@@ -1096,8 +1052,10 @@ $error: #ef4444;
 // 三列布局
 .three-column-layout {
   display: flex;
+  flex: 1;
+  min-height: 0;
   width: 100%;
-  height: 100%;
+  height: auto;
   gap: 16px;
   padding: 16px;
   position: relative;

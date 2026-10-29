@@ -1,471 +1,341 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { MdPreview } from "md-editor-v3"
-import "md-editor-v3/lib/style.css"
-import { getWorkspacePluginsAPI, workspaceSimpleChatStreamAPI, type McpToolEvent, type WorkSpaceSimpleTask } from '../../../apis/workspace'
+import { MdPreview } from 'md-editor-v3'
+import 'md-editor-v3/lib/style.css'
+import { getWorkspacePluginsAPI, getWorkspaceSessionInfoAPI, workspaceSimpleChatStreamAPI, type McpToolEvent, type WorkSpaceSimpleTask } from '../../../apis/workspace'
 import { getVisibleLLMsAPI, type LLMResponse } from '../../../apis/llm'
 import { getMCPServersAPI, type MCPServer } from '../../../apis/mcp-server'
+import { getAgentsAPI, type AgentResponse } from '../../../apis/agent'
 import { generateSessionId } from '../../../utils/session-id'
+import { configFromAgent, restoreConversationConfig, type ConversationConfig } from '../../../utils/workspace-config'
+import type { AgentProgressEvent } from '../../../utils/workspace-stream'
 import { useUserStore } from '../../../store/user'
+import userAvatar from '../../../assets/user.svg'
+import robotAvatar from '../../../assets/robot.svg'
 
 const userStore = useUserStore()
-
 const router = useRouter()
 const route = useRoute()
 const inputMessage = ref('')
-const selectedMode = ref('normal')
+const selectedMode = ref(route.query.mode === 'lingseek' ? 'lingseek' : 'normal')
 const plugins = ref<any[]>([])
-const showModelSelector = ref(false)
-const showToolSelector = ref(false)
-const showSearchSelector = ref(false)
-const selectedModel = ref<string>('')
-const selectedModelId = ref<string>('')
+const modelOptions = ref<LLMResponse[]>([])
+const agents = ref<AgentResponse[]>([])
+const selectedAgentId = ref('')
+const selectedModelId = ref('')
+const selectedModel = computed(() => modelOptions.value.find(m => m.llm_id === selectedModelId.value)?.model || (selectedModelId.value ? '模型已不可用' : '选择模型'))
 const selectedTools = ref<string[]>([])
-const showMcpSelector = ref(false)
 const selectedMcpServers = ref<string[]>([])
 const mcpServers = ref<MCPServer[]>([])
-const mcpServersLoading = ref(false)
-const mcpServersError = ref(false)
+const showModelSelector = ref(false)
+const showToolSelector = ref(false)
+const showMcpSelector = ref(false)
 const webSearchEnabled = ref(false)
 const toolDropdownRef = ref<HTMLElement | null>(null)
 const mcpDropdownRef = ref<HTMLElement | null>(null)
-const fileInputRef = ref<HTMLInputElement | null>(null)
-const currentSessionId = ref<string>('')  // 当前会话ID
-const chatConversationRef = ref<HTMLElement | null>(null)  // 聊天容器引用
-const isGenerating = ref(false)  // 是否正在生成回复
-
-// 模型数据（来自应用中心"可见模型"）
-const modelOptions = ref<LLMResponse[]>([])
+const modelDropdownRef = ref<HTMLElement | null>(null)
+const currentSessionId = ref('')
+const chatConversationRef = ref<HTMLElement | null>(null)
+const isGenerating = ref(false)
 const modelsLoading = ref(false)
+const mcpServersLoading = ref(false)
+const mcpServersError = ref(false)
+const resourceError = ref('')
+const historyLoading = ref(false)
+const historyError = ref('')
+const legacyConfig = ref(false)
+let activeController: AbortController | null = null
+let loadVersion = 0
+let disposed = false
+let historyLoaded = false
 
-// 本页对话消息（用户在上，AI在下）
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   mcpToolCalls?: Array<McpToolEvent & { expanded?: boolean }>
+  agentEvents?: Array<AgentProgressEvent & { expanded?: boolean }>
   reasoning?: string
   reasoningExpanded?: boolean
+  status?: 'generating' | 'complete' | 'stopped' | 'error'
 }
-
 const messages = ref<ChatMessage[]>([])
-
-const updateMcpToolCall = (messageIndex: number, event: McpToolEvent) => {
-  const message = messages.value[messageIndex]
-  if (!message || message.role !== 'assistant') return
-
-  const calls = message.mcpToolCalls || (message.mcpToolCalls = [])
-  const existing = calls.find(call => call.id === event.id)
-  if (existing) {
-    existing.status = event.status
-    existing.description = event.description
-    if (event.arguments) existing.arguments = event.arguments
-  } else {
-    calls.push({ ...event, expanded: false })
-  }
-  scrollToBottom()
-}
-
-const formatMcpArguments = (arguments_: Record<string, unknown>) =>
-  Object.entries(arguments_)
-    .map(([key, value]) => `${key}=${typeof value === 'string' ? value : JSON.stringify(value)}`)
-    .join('、')
-
-// 头像加载错误处理
-const handleAvatarError = (event: Event) => {
-  const target = event.target as HTMLImageElement
-  if (target) {
-    target.src = '/src/assets/user.svg'
-  }
-}
-
 const modes = [
-  {
-    id: 'normal',
-    label: '日常模式',
-    icon: '💬'
-  },
-  {
-    id: 'lingseek',
-    label: '灵寻LingSeek',
-    icon: '✨'
-  }
+  { id: 'normal', label: '日常对话', icon: '💬' },
+  { id: 'lingseek', label: '灵寻 LingSeek', icon: '✨' }
 ]
+const selectedAgent = computed(() => agents.value.find(a => a.agent_id === selectedAgentId.value))
+const selectedAgentMissing = computed(() => !!selectedAgentId.value && !selectedAgent.value)
+const configurationIssue = computed(() => {
+  if (selectedMode.value !== 'normal') return ''
+  if (selectedAgentMissing.value) return '所选智能体已不可用，请重新选择。'
+  if (selectedModelId.value && !modelOptions.value.some(m => m.llm_id === selectedModelId.value)) return '所选模型已不可用，请重新选择。'
+  if (selectedTools.value.some(id => !plugins.value.some(p => (p.id || p.tool_id) === id))) return '部分已选工具已不可用，请重新选择或清空。'
+  if (selectedMcpServers.value.some(id => !mcpServers.value.some(m => m.mcp_server_id === id))) return '部分已选 MCP 已不可用，请重新选择或清空。'
+  return ''
+})
+const controlsDisabled = computed(() => isGenerating.value || historyLoading.value || modelsLoading.value)
+const sendDisabled = computed(() => controlsDisabled.value || !!historyError.value || !!resourceError.value || !!configurationIssue.value)
 
-// 从接口加载模型
-const fetchModels = async () => {
-  modelsLoading.value = true
-  try {
-    const res = await getVisibleLLMsAPI()
-    if (res.data && res.data.status_code === 200) {
-      const grouped = res.data.data || {}
-      const list: LLMResponse[] = []
-      Object.values(grouped).forEach((arr: any) => {
-        if (Array.isArray(arr)) list.push(...arr)
-      })
-      // 仅保留 LLM 类型
-      modelOptions.value = list.filter(m => (m.llm_type || '').toUpperCase() === 'LLM')
-      // 默认选择第一个
-      if (!selectedModelId.value && modelOptions.value.length > 0) {
-        selectedModelId.value = modelOptions.value[0].llm_id
-        selectedModel.value = modelOptions.value[0].model
-      }
-    }
-  } catch (e) {
-    console.error('获取模型失败', e)
-  } finally {
-    modelsLoading.value = false
-  }
+const handleAvatarError = (event: Event) => { (event.target as HTMLImageElement).src = userAvatar }
+const scrollToBottom = async () => {
+  await nextTick()
+  if (chatConversationRef.value) chatConversationRef.value.scrollTop = chatConversationRef.value.scrollHeight
 }
+const formatMcpArguments = (arguments_: Record<string, unknown>) => Object.entries(arguments_)
+  .map(([key, value]) => `${key}=${typeof value === 'string' ? value : JSON.stringify(value)}`).join('、')
 
-// 获取可用插件
-const fetchPlugins = async () => {
-  try {
-    const response = await getWorkspacePluginsAPI()
-    if (response.data.status_code === 200) {
-      plugins.value = response.data.data || []
-      console.log('可用插件:', plugins.value)
-    }
-  } catch (error) {
-    console.error('获取插件列表出错:', error)
-  }
+const applyConfig = (config: ConversationConfig) => {
+  selectedAgentId.value = config.agent_id || ''
+  selectedModelId.value = config.model_id
+  selectedTools.value = [...config.plugins]
+  selectedMcpServers.value = [...config.mcp_servers]
 }
-
-// 选择模式
+const resetConfig = () => applyConfig({ agent_id: null, model_id: modelOptions.value[0]?.llm_id || '', plugins: [], mcp_servers: [] })
+const selectAgent = (event: Event) => {
+  if (controlsDisabled.value) return
+  const agentId = (event.target as HTMLSelectElement).value
+  const agent = agents.value.find(a => a.agent_id === agentId)
+  if (agent) applyConfig(configFromAgent(agent))
+  else resetConfig()
+  legacyConfig.value = false
+}
 const selectMode = (modeId: string) => {
-  selectedMode.value = modeId
-}
-
-// 选择模型
-const selectModel = (llmId: string) => {
-  const model = modelOptions.value.find(m => m.llm_id === llmId)
-  if (model) {
-    selectedModelId.value = model.llm_id
-    selectedModel.value = model.model
+  if (controlsDisabled.value || selectedMode.value === modeId) return
+  if (messages.value.length || route.query.session_id) {
+    router.push({ name: 'workspaceDefaultPage', query: { mode: modeId, new: generateSessionId() } })
+  } else {
+    selectedMode.value = modeId
+    router.replace({ name: 'workspaceDefaultPage', query: { mode: modeId } })
   }
+}
+const selectModel = (llmId: string) => {
+  if (!controlsDisabled.value) selectedModelId.value = llmId
   showModelSelector.value = false
 }
-
-// 切换工具选择
 const toggleTool = (toolId: string) => {
-  const index = selectedTools.value.indexOf(toolId)
-  if (index > -1) {
-    selectedTools.value.splice(index, 1)
-  } else {
-    selectedTools.value.push(toolId)
-  }
+  if (controlsDisabled.value) return
+  selectedTools.value = selectedTools.value.includes(toolId) ? selectedTools.value.filter(id => id !== toolId) : [...selectedTools.value, toolId]
 }
-
-// 切换联网搜索
-const toggleWebSearch = () => {
-  webSearchEnabled.value = !webSearchEnabled.value
-  showSearchSelector.value = false
-}
-
-// 点击空白处关闭工具/MCP下拉
-const handleClickOutside = (e: MouseEvent) => {
-  const target = e.target as Node
-  if (showToolSelector.value && toolDropdownRef.value && !toolDropdownRef.value.contains(target)) {
-    showToolSelector.value = false
-  }
-  if (showMcpSelector.value && mcpDropdownRef.value && !mcpDropdownRef.value.contains(target)) {
-    showMcpSelector.value = false
-  }
-}
-
-// 触发文件选择
-const triggerFileInput = () => {
-  fileInputRef.value?.click()
-}
-
-// 处理文件选择
-const onFileChange = (e: Event) => {
-  const input = e.target as HTMLInputElement
-  const files = input.files
-  if (files && files.length > 0) {
-    ElMessage.success(`已选择 ${files.length} 个文件`)
-  }
-  if (input) input.value = ''
-}
-
-// 切换 MCP 服务器选择
 const toggleMcp = (serverId: string) => {
-  const index = selectedMcpServers.value.indexOf(serverId)
-  if (index > -1) {
-    selectedMcpServers.value.splice(index, 1)
-  } else {
-    selectedMcpServers.value.push(serverId)
-  }
+  if (controlsDisabled.value) return
+  selectedMcpServers.value = selectedMcpServers.value.includes(serverId) ? selectedMcpServers.value.filter(id => id !== serverId) : [...selectedMcpServers.value, serverId]
+}
+const toggleWebSearch = () => { if (!controlsDisabled.value) webSearchEnabled.value = !webSearchEnabled.value }
+const toggleMcpSelector = () => { if (!controlsDisabled.value) showMcpSelector.value = !showMcpSelector.value }
+const handleClickOutside = (event: MouseEvent) => {
+  const target = event.target as Node
+  if (!toolDropdownRef.value?.contains(target)) showToolSelector.value = false
+  if (!mcpDropdownRef.value?.contains(target)) showMcpSelector.value = false
+  if (!modelDropdownRef.value?.contains(target)) showModelSelector.value = false
 }
 
-const fetchMcpServers = async () => {
-  if (mcpServersLoading.value) return
+const fetchResources = async () => {
+  modelsLoading.value = true
   mcpServersLoading.value = true
-  mcpServersError.value = false
+  resourceError.value = ''
   try {
-    const res = await getMCPServersAPI()
-    if (res.data.status_code !== 200 || !Array.isArray(res.data.data)) {
-      throw new Error('Invalid MCP server list response')
-    }
-    mcpServers.value = res.data.data
-    selectedMcpServers.value = selectedMcpServers.value.filter(id =>
-      mcpServers.value.some(server => server.mcp_server_id === id)
-    )
-  } catch (error) {
-    console.error('加载 MCP 服务器失败', error)
-    mcpServersError.value = true
+    const responses = await Promise.all([getVisibleLLMsAPI(), getWorkspacePluginsAPI(), getMCPServersAPI(), getAgentsAPI()])
+    if (disposed) return
+    if (responses.some(response => response.data.status_code !== 200)) throw new Error('resources unavailable')
+    const [modelsResponse, toolsResponse, mcpResponse, agentsResponse] = responses
+    modelOptions.value = Object.values(modelsResponse.data.data || {}).flat().filter(m => (m.llm_type || '').toUpperCase() === 'LLM')
+    plugins.value = toolsResponse.data.data || []
+    mcpServers.value = mcpResponse.data.data || []
+    agents.value = (agentsResponse.data.data || []).map(a => ({ ...a, agent_id: a.agent_id || (a as AgentResponse & { id?: string }).id || '' }))
+    mcpServersError.value = false
+    // Never replace a configuration restored from history, including an empty model.
+    if (!selectedModelId.value && !historyLoaded) resetConfig()
+  } catch {
+    if (!disposed) resourceError.value = '加载模型、工具或智能体失败，请重试。'
   } finally {
+    modelsLoading.value = false
     mcpServersLoading.value = false
   }
 }
+const fetchMcpServers = fetchResources
 
-const toggleMcpSelector = () => {
-  showMcpSelector.value = !showMcpSelector.value
-  if (showMcpSelector.value) fetchMcpServers()
+const markInterrupted = (message: ChatMessage, status: 'stopped' | 'error') => {
+  message.status = status
+  message.mcpToolCalls?.forEach(call => { if (call.status === 'START') call.status = 'ERROR' })
+  message.agentEvents?.forEach(event => { if (event.status === 'START') event.status = 'ERROR' })
+}
+const stopGeneration = () => {
+  activeController?.abort()
+  activeController = null
+  const message = messages.value[messages.value.length - 1]
+  if (isGenerating.value && message?.role === 'assistant') markInterrupted(message, 'stopped')
+  isGenerating.value = false
+}
+const updateMcpToolCall = (message: ChatMessage, event: McpToolEvent) => {
+  const calls = message.mcpToolCalls || (message.mcpToolCalls = [])
+  const existing = calls.find(call => call.id === event.id)
+  if (existing) Object.assign(existing, event)
+  else calls.push({ ...event, expanded: false })
+  scrollToBottom()
+}
+const updateAgentEvent = (message: ChatMessage, event: AgentProgressEvent) => {
+  const events = message.agentEvents || (message.agentEvents = [])
+  const existing = events.find(item => item.title === event.title)
+  if (existing) Object.assign(existing, event)
+  else events.push({ ...event, expanded: false })
+  scrollToBottom()
 }
 
-// 自动滚动到底部
-const scrollToBottom = () => {
-  if (chatConversationRef.value) {
-    setTimeout(() => {
-      if (chatConversationRef.value) {
-        chatConversationRef.value.scrollTop = chatConversationRef.value.scrollHeight
-      }
-    }, 100)
-  }
-}
-
-// 发送消息
 const handleSend = async () => {
-  if (!inputMessage.value.trim()) {
-    ElMessage.warning('请输入消息内容')
-    return
-  }
-
-  // 如果正在生成回复，不允许发送新消息
-  if (isGenerating.value) {
-    ElMessage.warning('请等待当前回复完成')
-    return
-  }
-  
+  if (sendDisabled.value || isGenerating.value) return
   const query = inputMessage.value.trim()
-  
-  // 根据模式跳转到不同的页面
+  if (!query) { ElMessage.warning('请输入消息内容'); return }
   if (selectedMode.value === 'lingseek') {
-    // 灵寻模式：直接跳转到任务流程图页面（三列布局）
-    console.log('跳转到灵寻任务页面')
-    console.log('query:', query)
-    console.log('tools:', selectedTools.value)
-    console.log('webSearch:', webSearchEnabled.value)
-    
-    // 立即清空输入框
-    inputMessage.value = ''
-    
-    router.push({
-      name: 'taskGraphPage',
-      query: {
-        query: query,
-        tools: JSON.stringify(selectedTools.value),
-        webSearch: webSearchEnabled.value.toString(),
-        mcp_servers: JSON.stringify(selectedMcpServers.value)
-      }
-    })
-  } else {
-    // 日常模式：在本页进行对话（流式）
-    console.log('=== 日常模式发送消息 ===')
-    console.log('selectedModelId:', selectedModelId.value)
-    console.log('query:', query)
-    console.log('session_id:', currentSessionId.value)
-    
-    if (!selectedModelId.value) {
-      ElMessage.warning('请先选择模型')
-      return
-    }
-
-    // 如果还没有session_id，生成一个新的
-    if (!currentSessionId.value) {
-      currentSessionId.value = generateSessionId()
-      console.log('生成新的 session_id:', currentSessionId.value)
-    }
-
-    // 立即清空输入框，提升用户体验
-    inputMessage.value = ''
-    
-    // 设置正在生成状态（转圈）
-    isGenerating.value = true
-
-    // 将用户消息加入消息列表
-    console.log('将用户消息加入 messages')
-    messages.value.push({ role: 'user' as const, content: query })
-    
-    // 自动滚动到底部
-    scrollToBottom()
-    
-    // 预置一条AI消息用于流式累加（先添加到数组，然后通过索引更新以触发响应式）
-    const aiMsgIndex = messages.value.length
-    messages.value.push({ role: 'assistant', content: '', mcpToolCalls: [], reasoning: '', reasoningExpanded: true })
-    console.log('当前 messages 长度:', messages.value.length)
-
-    try {
-      const payload: WorkSpaceSimpleTask = {
-        query,
-        model_id: selectedModelId.value,
-        plugins: selectedTools.value,
-        mcp_servers: selectedMcpServers.value,
-        session_id: currentSessionId.value  // 添加session_id参数
-      }
-      console.log('准备调用 workspaceSimpleChatStreamAPI，payload:', payload)
-      await workspaceSimpleChatStreamAPI(
-        payload,
-        (chunk) => {
-          console.log('收到 chunk，累加到 aiMsg:', chunk)
-          // 通过索引更新以触发 Vue 的响应式
-          messages.value[aiMsgIndex].content += chunk
-          // 每次收到新内容时自动滚动到底部
-          scrollToBottom()
-        },
-        (err) => {
-          console.error('日常模式流式出错', err)
-          ElMessage.error('对话失败，请稍后重试')
-          messages.value[aiMsgIndex].mcpToolCalls?.forEach(call => {
-            if (call.status === 'START') call.status = 'ERROR'
-          })
-          isGenerating.value = false  // 出错时解除生成状态
-        },
-        () => {
-          console.log('日常模式流式结束')
-          isGenerating.value = false  // 完成时解除生成状态
-        },
-        (event) => updateMcpToolCall(aiMsgIndex, event),
-        (chunk) => {
-          messages.value[aiMsgIndex].reasoning = (messages.value[aiMsgIndex].reasoning || '') + chunk
-          scrollToBottom()
-        }
-      )
-    } catch (e) {
-      console.error('日常模式对话异常', e)
-      ElMessage.error('对话异常')
-      isGenerating.value = false  // 异常时解除生成状态
-    }
+    router.push({ name: 'taskGraphPage', query: {
+      query, tools: JSON.stringify(selectedTools.value), webSearch: String(webSearchEnabled.value), mcp_servers: JSON.stringify(selectedMcpServers.value)
+    } })
+    return
   }
-}
-
-// 键盘事件处理
-const handleKeydown = (event: KeyboardEvent) => {
-  // 直接回车发送，Shift+Enter 换行
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault()
-    // 如果正在生成，不响应回车
-    if (!isGenerating.value) {
-      handleSend()
-    }
+  if (!selectedModelId.value) { ElMessage.warning('请先选择模型'); return }
+  const sessionId = currentSessionId.value || generateSessionId()
+  currentSessionId.value = sessionId
+  inputMessage.value = ''
+  showModelSelector.value = showToolSelector.value = showMcpSelector.value = false
+  isGenerating.value = true
+  const controller = new AbortController()
+  activeController = controller
+  messages.value.push({ role: 'user', content: query })
+  messages.value.push({ role: 'assistant', content: '', status: 'generating', mcpToolCalls: [], agentEvents: [], reasoning: '', reasoningExpanded: true })
+  const message = messages.value[messages.value.length - 1]
+  const isCurrent = () => !disposed && !controller.signal.aborted && activeController === controller && currentSessionId.value === sessionId
+  scrollToBottom()
+  const payload: WorkSpaceSimpleTask = {
+    query, model_id: selectedModelId.value, plugins: [...selectedTools.value], mcp_servers: [...selectedMcpServers.value],
+    agent_id: selectedAgentId.value || null, session_id: sessionId
   }
-}
-
-// 加载会话历史
-const loadSessionHistory = async (sessionId: string) => {
   try {
-    // 导入 API
-    const { getWorkspaceSessionsAPI } = await import('../../../apis/workspace')
-    const response = await getWorkspaceSessionsAPI()
-    
-    if (response.data.status_code === 200) {
-      const session = response.data.data.find((s: any) => s.session_id === sessionId)
-      
-      if (session && session.contexts && Array.isArray(session.contexts)) {
-        // 将 contexts 转换为 messages 格式
-        messages.value = session.contexts.map((ctx: any) => [
-          { role: 'user' as const, content: ctx.query || '' },
-          {
-            role: 'assistant' as const,
-            content: ctx.answer || '',
-            reasoning: ctx.reasoning || '',
-            reasoningExpanded: false,
-            mcpToolCalls: Array.isArray(ctx.mcp_tool_calls)
-              ? ctx.mcp_tool_calls.map((call: McpToolEvent) => ({ ...call, expanded: false }))
-              : []
-          }
-        ]).flat().filter((msg: ChatMessage) => msg.content || msg.reasoning || msg.mcpToolCalls?.length)
-        
-        console.log('已加载会话历史，消息数量:', messages.value.length)
-        
-        // 加载历史后滚动到底部
-        scrollToBottom()
-      }
+    await workspaceSimpleChatStreamAPI(payload,
+      chunk => { if (isCurrent()) { message.content += chunk; scrollToBottom() } },
+      undefined, undefined,
+      event => { if (isCurrent()) updateMcpToolCall(message, event) },
+      chunk => { if (isCurrent()) { message.reasoning = (message.reasoning || '') + chunk; scrollToBottom() } },
+      { signal: controller.signal, onAgentEvent: event => { if (isCurrent()) updateAgentEvent(message, event) } }
+    )
+    if (isCurrent()) {
+      message.status = 'complete'
+      legacyConfig.value = false
+      // Only successful, persisted sessions receive a bookmarkable URL.
+      if (route.query.session_id !== sessionId) await router.replace({ name: 'workspaceDefaultPage', query: { session_id: sessionId, mode: 'normal' } })
+      window.dispatchEvent(new CustomEvent('conversation-updated'))
     }
   } catch (error) {
-    console.error('加载会话历史失败:', error)
-    ElMessage.error('加载会话历史失败')
+    if (isCurrent()) {
+      markInterrupted(message, 'error')
+      ElMessage.error(error instanceof Error ? error.message : '对话失败，请稍后重试')
+    }
+  } finally {
+    if (activeController === controller) { activeController = null; isGenerating.value = false }
   }
 }
+const handleKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); handleSend() }
+}
 
-onMounted(async () => {
-  fetchPlugins()
-  fetchModels()
-  fetchMcpServers()
-  
-  // 检查是否有 session_id 参数，如果有则加载会话历史
-  const sessionId = route.query.session_id as string
-  if (sessionId) {
-    console.log('加载已有会话:', sessionId)
-    currentSessionId.value = sessionId  // 设置当前会话ID
-    await loadSessionHistory(sessionId)
-  } else {
-    // 如果没有session_id，生成一个新的
-    currentSessionId.value = generateSessionId()
-    console.log('生成新会话ID:', currentSessionId.value)
+const loadSessionHistory = async (sessionId: string) => {
+  const version = ++loadVersion
+  historyLoading.value = true
+  historyError.value = ''
+  legacyConfig.value = false
+  try {
+    const response = await getWorkspaceSessionInfoAPI(sessionId)
+    if (disposed || version !== loadVersion) return
+    const session = response.data.data
+    if (response.data.status_code !== 200 || !session || session.agent !== 'simple') throw new Error('session unavailable')
+    const contexts = Array.isArray(session.contexts) ? session.contexts : []
+    messages.value = contexts.flatMap((context: any) => [
+      { role: 'user', content: context.query || '' },
+      { role: 'assistant', content: context.answer || '', status: 'complete', reasoning: context.reasoning || '', reasoningExpanded: false,
+        mcpToolCalls: (context.mcp_tool_calls || []).map((call: McpToolEvent) => ({ ...call, expanded: false })),
+        agentEvents: (context.agent_events || []).map((event: AgentProgressEvent) => ({ ...event, expanded: false })) }
+    ])
+    selectedMode.value = 'normal'
+    const config = restoreConversationConfig(contexts)
+    if (config) applyConfig(config)
+    else { resetConfig(); legacyConfig.value = true }
+    historyLoaded = !!config
+    scrollToBottom()
+  } catch {
+    if (!disposed && version === loadVersion) historyError.value = '无法读取该会话，请重试或从列表重新选择。'
+  } finally {
+    if (version === loadVersion) historyLoading.value = false
   }
-  
+}
+const resetConversation = async (sessionId?: string) => {
+  stopGeneration()
+  ++loadVersion
+  currentSessionId.value = sessionId || generateSessionId()
+  messages.value = []
+  inputMessage.value = ''
+  historyError.value = ''
+  historyLoading.value = false
+  historyLoaded = false
+  legacyConfig.value = false
+  selectedMode.value = sessionId ? 'normal' : route.query.mode === 'lingseek' ? 'lingseek' : 'normal'
+  resetConfig()
+  if (sessionId) await loadSessionHistory(sessionId)
+  else if (typeof route.query.agent_id === 'string') {
+    const agent = agents.value.find(item => item.agent_id === route.query.agent_id)
+    if (agent) applyConfig(configFromAgent(agent))
+    else selectedAgentId.value = route.query.agent_id
+  }
+}
+onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
+  await fetchResources()
+  if (!disposed) await resetConversation(typeof route.query.session_id === 'string' ? route.query.session_id : undefined)
 })
-
 onBeforeUnmount(() => {
+  disposed = true
+  ++loadVersion
+  stopGeneration()
   document.removeEventListener('click', handleClickOutside)
 })
-
-// 监听路由参数变化
-watch(
-  () => route.query.session_id,
-  async (newSessionId, oldSessionId) => {
-    if (newSessionId && newSessionId !== oldSessionId) {
-      console.log('检测到会话ID变化:', oldSessionId, '->', newSessionId)
-      // 更新当前会话ID
-      currentSessionId.value = newSessionId as string
-      // 清空当前消息
-      messages.value = []
-      // 加载新会话的历史
-      await loadSessionHistory(newSessionId as string)
-    } else if (!newSessionId && oldSessionId) {
-      // 如果从有session_id变为没有，生成新的session_id
-      currentSessionId.value = generateSessionId()
-      console.log('生成新会话ID:', currentSessionId.value)
-      messages.value = []
-    }
-  }
-)
+watch(() => route.query.session_id, (newId, oldId) => {
+  if (newId !== oldId && newId !== currentSessionId.value) resetConversation(typeof newId === 'string' ? newId : undefined)
+})
+watch(() => route.query.mode, mode => {
+  if (!route.query.session_id && messages.value.length === 0) selectedMode.value = mode === 'lingseek' ? 'lingseek' : 'normal'
+})
 </script>
 
 <template>
   <div class="chat-page" :class="{ 'chat-active': messages.length > 0 }">
     <div class="chat-container">
+      <div class="conversation-mode-header">
+        <span>会话模块</span>
+        <span v-if="messages.length" class="current-mode">日常对话</span>
+      </div>
+      <div v-if="resourceError" class="conversation-notice" role="alert">
+        {{ resourceError }} <button @click="fetchResources">重试</button>
+      </div>
+      <div v-if="historyError" class="conversation-notice" role="alert">
+        {{ historyError }} <button @click="loadSessionHistory(currentSessionId)">重试</button>
+      </div>
+      <div v-if="historyLoading" class="conversation-notice" role="status">正在恢复会话…</div>
+      <div v-if="legacyConfig" class="conversation-notice">这条旧记录未保存模型和工具配置，继续前请确认当前选择。</div>
       <!-- 欢迎区域（有对话时隐藏） -->
       <div v-if="messages.length === 0" class="welcome-section">
         <div class="avatar-wrapper">
           <img src="../../../assets/robot.svg" alt="智治" class="avatar" />
         </div>
         <h1 class="welcome-title">今天想做些什么？</h1>
-        <p class="welcome-subtitle">
-          输入你的问题，智治会帮你逐步完成。
-        </p>
+        <p class="welcome-subtitle">{{ selectedMode === 'normal' ? '选择通用助手或已有智能体，开始日常对话。' : '描述目标，生成指导手册并查看任务执行流程。' }}</p>
       </div>
 
       <!-- 模式选择（有对话时隐藏） -->
-      <div v-if="messages.length === 0" class="mode-selector">
+      <div v-if="messages.length === 0 && !route.query.session_id" class="mode-selector" aria-label="会话模式">
         <button
           v-for="mode in modes"
           :key="mode.id"
           :class="['mode-btn', { active: selectedMode === mode.id }]"
+          :disabled="controlsDisabled"
           @click="selectMode(mode.id)"
         >
           <span class="mode-icon">{{ mode.icon }}</span>
@@ -481,21 +351,27 @@ watch(
             <div class="message-content">
               <span>{{ msg.content }}</span>
             </div>
-            <img :src="userStore.userInfo?.avatar || '/src/assets/user.svg'" alt="User Avatar" class="avatar" @error="handleAvatarError" />
+            <img :src="userStore.userInfo?.avatar || userAvatar" alt="User Avatar" class="avatar" @error="handleAvatarError" />
           </div>
           
           <!-- AI Message -->
           <div v-if="msg.role === 'assistant'" class="ai-message">
-            <img src="/src/assets/robot.svg" alt="AI Avatar" class="avatar" />
+            <img :src="robotAvatar" alt="AI Avatar" class="avatar" />
             <div class="message-content">
               <div v-if="msg.reasoning" class="reasoning-panel">
                 <button type="button" class="reasoning-header" @click="msg.reasoningExpanded = !msg.reasoningExpanded">
                   <span class="reasoning-icon">✦</span>
                   <span class="reasoning-title">思考过程</span>
-                  <span class="reasoning-status">{{ isGenerating && idx === messages.length - 1 && !msg.content ? '思考中' : '已完成' }}</span>
+                  <span class="reasoning-status">{{ msg.status === 'stopped' ? '已停止' : msg.status === 'error' ? '生成失败' : isGenerating && idx === messages.length - 1 && !msg.content ? '思考中' : '已完成' }}</span>
                   <span class="reasoning-toggle">{{ msg.reasoningExpanded ? '收起' : '展开' }}</span>
                 </button>
                 <div v-if="msg.reasoningExpanded" class="reasoning-content">{{ msg.reasoning }}</div>
+              </div>
+              <div v-if="msg.agentEvents?.length" class="agent-progress-events">
+                <details v-for="(event, eventIndex) in msg.agentEvents" :key="eventIndex" class="agent-progress-event">
+                  <summary>{{ event.title }} · {{ event.status === 'START' ? '执行中' : event.status === 'END' ? '已完成' : '已中断或失败' }}</summary>
+                  <p>{{ event.message }}</p>
+                </details>
               </div>
               <div v-if="msg.mcpToolCalls?.length" class="mcp-tool-events">
                 <div v-for="call in msg.mcpToolCalls" :key="call.id" class="mcp-tool-event" :class="call.status.toLowerCase()">
@@ -521,6 +397,9 @@ watch(
               </div>
               <!-- 实际内容 - 有内容时显示 -->
               <MdPreview v-if="msg.content" :editorId="'workspace-ai-' + idx" :modelValue="msg.content" />
+              <p v-if="msg.status === 'stopped' || msg.status === 'error'" class="message-status" role="status">
+                {{ msg.status === 'stopped' ? '已停止生成，本轮可能未保存。' : '本轮生成失败，请重试。' }}
+              </p>
             </div>
           </div>
         </div>
@@ -528,20 +407,31 @@ watch(
 
       <!-- 输入区域（固定在底部） -->
       <div class="input-section" :class="{ 'input-fixed': messages.length > 0 }">
+        <div v-if="selectedMode === 'normal'" class="agent-config-row">
+          <label for="conversation-agent">智能体</label>
+          <select id="conversation-agent" :value="selectedAgentId" :disabled="controlsDisabled || !!historyError" @change="selectAgent">
+            <option value="">通用助手</option>
+            <option v-if="selectedAgentMissing" :value="selectedAgentId" disabled>原智能体已不可用</option>
+            <option v-for="agent in agents" :key="agent.agent_id" :value="agent.agent_id">{{ agent.name }}</option>
+          </select>
+          <span class="agent-config-hint">{{ selectedAgentId ? '已带入智能体配置，调整仅用于当前会话' : '自由选择模型、工具和 MCP' }}</span>
+        </div>
+        <p v-if="configurationIssue" class="conversation-notice" role="alert">{{ configurationIssue }}</p>
         <div class="input-wrapper" :class="{ 'lingseek-glow': selectedMode === 'lingseek' }">
           <textarea
             v-model="inputMessage"
             placeholder="描述你想完成的任务…"
             class="message-input"
             rows="4"
+            :disabled="historyLoading || !!historyError"
             @keydown="handleKeydown"
           ></textarea>
           
           <!-- 底部控制栏 -->
           <div class="input-footer">
-            <div class="footer-left">
+            <div class="footer-left" :class="{ 'controls-disabled': controlsDisabled || !!historyError }" :aria-disabled="controlsDisabled || !!historyError">
               <!-- 模型选择（仅日常模式显示） -->
-              <div v-if="selectedMode === 'normal'" class="selector-dropdown">
+              <div v-if="selectedMode === 'normal'" class="selector-dropdown" ref="modelDropdownRef">
                 <div 
                   :class="['selector-item', { open: showModelSelector }]"
                   @click="showModelSelector = !showModelSelector"
@@ -754,22 +644,10 @@ watch(
             </div>
             
             <div class="footer-right">
-              <!-- 附件按钮 -->
-              <button class="icon-btn" title="上传附件" @click="triggerFileInput">
-                <img src="../../../assets/upload.svg" alt="上传" class="upload-icon" />
-              </button>
-              <input
-                type="file"
-                ref="fileInputRef"
-                class="hidden-file-input"
-                multiple
-                @change="onFileChange"
-              />
-              
               <!-- 发送按钮 -->
-              <button class="send-btn" :class="{ 'btn-disabled': isGenerating }" :disabled="isGenerating" @click="handleSend">
-                <span v-if="!isGenerating">➤</span>
-                <span v-else class="loading-spinner"></span>
+              <button v-if="isGenerating" class="send-btn stop-btn" aria-label="停止生成" title="停止生成" @click="stopGeneration">■</button>
+              <button v-else class="send-btn" :class="{ 'btn-disabled': sendDisabled }" :disabled="sendDisabled" aria-label="发送消息" title="发送消息" @click="handleSend">
+                <span>➤</span>
               </button>
             </div>
           </div>
@@ -780,6 +658,41 @@ watch(
 </template>
 
 <style lang="scss" scoped>
+.conversation-mode-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 16px 20px;
+  color: #475569;
+  font-size: 14px;
+  flex-shrink: 0;
+  .current-mode { color: #6366f1; }
+}
+.conversation-notice {
+  color: #92400e;
+  background: #fffbeb;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  font-size: 13px;
+  button { border: 0; background: none; color: #4338ca; cursor: pointer; }
+}
+.agent-config-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 auto 10px;
+  max-width: 900px;
+  font-size: 13px;
+  color: #475569;
+  select { max-width: 260px; padding: 7px 12px; border: 1px solid #dbe1ea; border-radius: 8px; background: white; color: #334155; }
+  .agent-config-hint { color: #64748b; font-size: 12px; }
+}
+.controls-disabled { pointer-events: none; opacity: .6; }
+.agent-progress-event { padding: 9px 12px; margin: 6px 0; border-radius: 8px; background: #eef2ff; color: #475569; font-size: 13px; summary { cursor: pointer; } }
+.message-status { font-size: 13px; color: #92400e; }
 .chat-page {
   width: 100%;
   height: 100%;
@@ -1047,6 +960,7 @@ watch(
 
       .footer-left {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         gap: 10px;
 

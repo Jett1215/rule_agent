@@ -3,10 +3,10 @@ import { onMounted, ref, watch, computed } from "vue"
 import { useRouter } from "vue-router"
 import { useRoute } from "vue-router"
 import { ElMessage, ElMessageBox } from 'element-plus'
-import workspaceIcon from '../assets/workspace.svg'
 import applicationCenterIcon from '../assets/application-center.svg'
 import dialogIcon from '../assets/dialog.svg'
 import robotIcon from '../assets/robot.svg'
+import userAvatar from '../assets/user.svg'
 import pluginIcon from '../assets/plugin.svg'
 import knowledgeIcon from '../assets/knowledge.svg'
 import modelIcon from '../assets/model.svg'
@@ -41,13 +41,13 @@ const closeAppCenterMenu = () => {
 }
 
 const goWorkspaceTop = () => {
-  router.push('/workspace')
+  router.push('/conversation')
 }
 
 const appCenterColumns = ref([
   [
-    { label: '会话', icon: dialogIcon, route: '/conversation' },
-    { label: '工作台', icon: workspaceIcon, route: '/workspace' }
+    { label: '会话模块', icon: dialogIcon, route: '/conversation' },
+    { label: '探索', icon: applicationCenterIcon, route: '/homepage' }
   ],
   [
     { label: '智能体', icon: robotIcon, route: '/agent' },
@@ -66,7 +66,7 @@ const current = ref(route.meta.current)
 const cardList = ref<Agent[]>([])
 
 // 顶栏按钮激活态
-const isWorkspaceActive = computed(() => route.path.startsWith('/workspace'))
+const isWorkspaceActive = computed(() => route.path.startsWith('/conversation') || route.path.startsWith('/workspace'))
 const isAppCenterActive = computed(() => route.path.startsWith('/homepage'))
 
 // 初始化用户状态
@@ -80,7 +80,7 @@ onMounted(async () => {
       if (response.data.status_code === 200 && response.data.data) {
         const userData = response.data.data
         userStore.updateUserInfo({
-          avatar: userData.user_avatar || userData.avatar || '/src/assets/user.svg',
+          avatar: userData.user_avatar || userData.avatar || userAvatar,
           description: userData.user_description || userData.description
         })
       }
@@ -160,7 +160,8 @@ const handleLogout = async () => {
 const handleAvatarError = (event: Event) => {
   const target = event.target as HTMLImageElement
   if (target) {
-    target.src = '/src/assets/user.svg'
+    target.onerror = null
+    target.src = userAvatar
   }
 }
 
@@ -193,7 +194,7 @@ watch(
             <div class="user-avatar-wrapper">
               <div class="user-avatar">
                 <img
-                  :src="userStore.userInfo?.avatar || '/src/assets/user.svg'"
+                  :src="userStore.userInfo?.avatar || userAvatar"
                   alt="用户头像"
                   style="width: 40px; height: 40px; border-radius: 50%"
                   @error="handleAvatarError"
@@ -229,12 +230,12 @@ watch(
             text-color="#303030"
             @select="handleMenuSelect"
           >
-            <el-menu-item index="workspace" @click="goCurrent('workspace')">
+            <el-menu-item index="conversation" @click="goCurrent('conversation')">
               <template #title>
                 <el-icon>
-                  <SidebarIcon name="workspace" />
+                  <SidebarIcon name="conversation" />
                 </el-icon>
-                <span>工作台</span>
+                <span>会话模块</span>
               </template>
             </el-menu-item>
             <el-menu-item index="homepage" @click="goCurrent('homepage')">
@@ -243,14 +244,6 @@ watch(
                   <SidebarIcon name="explore" />
                 </el-icon>
                 <span>探索</span>
-              </template>
-            </el-menu-item>
-            <el-menu-item index="conversation" @click="goCurrent('conversation')">
-              <template #title>
-                <el-icon>
-                  <SidebarIcon name="conversation" />
-                </el-icon>
-                <span>会话</span>
               </template>
             </el-menu-item>
             <el-menu-item index="agent" @click="goCurrent('agent')">
@@ -348,7 +341,7 @@ watch(
           </div>
         </div>
       </el-col>
-      <div class="content" :class="{ 'management-content': route.path !== '/homepage' && !route.path.startsWith('/workspace'), 'workspace-content': route.path.startsWith('/workspace') }">
+      <div class="content" :class="{ 'management-content': route.path !== '/homepage' && !isWorkspaceActive, 'workspace-content': isWorkspaceActive }">
         <router-view></router-view>
       </div>
     </div>

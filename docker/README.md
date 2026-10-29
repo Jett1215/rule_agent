@@ -2,7 +2,7 @@
 
 本目录同时提供开发 Compose 与生产 Compose。两套配置的端口、镜像、数据目录及前端部署方式不同，所有命令应明确指定文件。工程入口见 [AGENTS.md](../AGENTS.md) 与 [文档索引](../docs/README.md)。
 
-本页依据 2026-10-21 的仓库文件静态整理；本轮未构建镜像、启动容器或检查云端。生产历史和备份恢复计划见 [云部署说明](../docs/cloud-deployment.md)。
+本页最初依据 2026-10-21 的仓库文件静态整理；2026-10-29 本地前后端更新及记忆目录持久化的执行结果见[验证报告](../docs/verification-report.md#2026-10-29-本地容器更新)。生产历史和备份恢复计划见 [云部署说明](../docs/cloud-deployment.md)。
 
 ## 两种部署
 
@@ -67,6 +67,13 @@ docker compose --env-file docker/.env -f docker/docker-compose.yml stop
 
 更改挂载 YAML 后重启后端；更改 Python/Vue 代码后重新构建对应镜像。当前默认 Compose 没有启用源码挂载或热更新。前端镜像使用 `npm install`，本地可重复安装则按 [前端 README](../src/frontend/README.md) 使用 `npm ci`。
 
+已有本地项目 `docker` 只更新前后端时，先备份配置与应用数据，再使用以下命令；其他部署应保留其原有项目名。`--no-deps` 避免顺带重建 MySQL、Redis 和 MinIO。仅在宿主机编辑源码不会改变 8090 内的页面。
+
+```bash
+docker compose -p docker --env-file docker/.env -f docker/docker-compose.yml build backend frontend
+docker compose -p docker --env-file docker/.env -f docker/docker-compose.yml up -d --no-deps backend frontend
+```
+
 后端远程调试可叠加 `docker-compose.debug.yml`：
 
 ```bash
@@ -85,9 +92,9 @@ docker compose --env-file docker/.env -f docker/docker-compose.yml -f docker/doc
 | Redis | `redis_data` 命名卷 | `rule-agent_redis_data`；配置 AOF |
 | MinIO | `${DOCKER_VOLUME_DIRECTORY:-.}/data/minio_data`，默认 `docker/data/minio_data` | `docker/data/minio_data` |
 | Chroma | `docker/data/vector_db` | `docker/data/vector_db` |
-| Memory | 开发 Compose 未显式挂载 | `docker/data/memory_db` |
+| Memory | `docker/data/memory_db` | `docker/data/memory_db` |
 
-开发 Redis 挂载了数据卷但没有显式开启 AOF，其耐久性需核实。开发环境若使用 memory 数据，还需按真实使用方式补充持久化方案。不要默认替换目录或项目名：这可能使 Compose 使用全新数据卷，表现为“数据丢失”。
+开发 Redis 挂载了数据卷但没有显式开启 AOF，其耐久性需核实。2026-10-29 开发 Compose 增加了 `/app/memory_db` 挂载；从此前容器更新时，先停止后端并备份/提取容器中该目录，确认宿主机目标目录没有需要保留的其他内容后再恢复到 `docker/data/memory_db`，否则空挂载会遮住原记忆数据。不要默认替换目录或项目名：这可能使 Compose 使用全新数据卷，表现为“数据丢失”。
 
 更新镜像不会迁移已有表字段，也不会备份数据；修改 `.env` 不会自动修改已有 MySQL 卷中的账号密码。不要用 `down -v`、`docker volume rm` 或清空数据目录处理常规连接问题。生产发布前先完成 [备份及恢复演练](../docs/cloud-deployment.md#备份计划与操作草案)，然后按同页流程发布或回滚。
 

@@ -13,51 +13,39 @@ export interface UploadResponse {
   data: string
 }
 
-export function sendMessage(data: Chat, onmessage: any, onclose: any) {
+export function sendMessage(data: Chat, onmessage: any, onclose: any, onerror?: (error: unknown) => void) {
   const ctrl = new AbortController();
-
-  fetchEventSource('/api/v1/completion', {
+  void fetchEventSource('/api/v1/completion', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
     },
     body: JSON.stringify({
-      ...(data.fileUrl
-        ? {
-            dialog_id: data.dialogId,
-            user_input: data.userInput,
-            file_url: data.fileUrl,
-          }
-        : {
-            dialog_id: data.dialogId,
-            user_input: data.userInput,
-          }),
+      dialog_id: data.dialogId,
+      user_input: data.userInput,
+      ...(data.fileUrl ? { file_url: data.fileUrl } : {}),
     }),
     signal: ctrl.signal,
     openWhenHidden: true,
-    async onopen(response: any) {
-      if (response.status !== 200) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    async onopen(response) {
+      if (!response.ok || !response.headers.get('content-type')?.includes('text/event-stream')) {
+        throw new Error(`对话请求失败（HTTP ${response.status}）`);
       }
     },
-    onmessage(msg: any) {
-      try {
-        onmessage(msg);
-      } catch (error) {
-        console.error('处理消息时出错:', error);
-      }
+    onmessage(message) {
+      if (!ctrl.signal.aborted) onmessage(message);
     },
     onclose() {
-      onclose();
+      if (!ctrl.signal.aborted) onclose();
     },
-    onerror(err: any) {
-      console.error('聊天连接错误:', err);
-      ctrl.abort();
-      throw err;
+    onerror(error) {
+      // 不自动重发已可能执行工具的会话请求。
+      throw error;
     }
+  }).catch(error => {
+    if (!ctrl.signal.aborted) onerror?.(error);
   });
-
   return ctrl;
 }
 

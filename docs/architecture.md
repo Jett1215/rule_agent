@@ -1,6 +1,6 @@
 # 当前系统架构
 
-更新日期：2026-10-27。依据：已提交的应用源码及既有验证记录；架构基线最初于 2026-10-21 静态整理。应用 `08f9b23` 已部署，后续 `5d67cc7` 仅更新运维文档，应用和部署文件无差异。具体运行证据与限制见[验证报告](verification-report.md)，逻辑架构图不代表所有路径已经验收。
+更新日期：2026-10-27。依据：已提交源码、CONV-001 本地增量及验证记录；架构基线最初于 2026-10-21 静态整理。应用 `08f9b23` 已部署，后续文档提交及本次会话模块增量尚未作为新应用发布。具体运行证据与限制见[验证报告](verification-report.md)，逻辑架构图不代表所有路径已经验收。
 
 ## 系统边界
 
@@ -57,9 +57,17 @@ flowchart LR
 
 ## 主要数据流
 
+### 统一会话入口
+
+2026-10-27 CONV-001 将工作台与会话页面合为 `/conversation` 的会话模块，提供日常对话和灵寻 LingSeek；`/workspace` 为兼容别名，旧智能体 `/conversation/chatPage?dialog_id=...` 仍可继续使用。前端聚合 `workspace_session` 与 `dialog` 列表，以来源前缀区分相同 ID，删除和恢复仍调用原存储链路；探索/Mars 保留独立入口。
+
+新日常对话由 `api/services/workspace_chat.py` 校验权限并组合运行配置：通用助手沿用 WorkSpaceSimpleAgent，选择已有智能体时复用 GeneralAgent，当前会话覆盖模型/工具/MCP而不修改智能体定义。每轮将配置写入已有上下文 JSON；模式按会话固定，切换模式开启新会话。旧智能体历史继续走 `/completion` 并沿用原智能体配置，可另开可配置的新日常会话。LingSeek 执行页面保留流程与全屏布局，增加返回统一入口及卸载取消连接。
+
+前端对生成请求禁用自动重试，切换记录/卸载时中断所属流，并以请求版本防止旧历史或旧片段覆盖新会话。新日常 SSE 的 `done` 仅在正常结束且上下文保存后发送；错误、取消和无标记 EOF 不视为成功。协议细节见 [API 参考](reference/api.md)，测试范围与真实服务边界见验证报告。
+
 ### 普通会话
 
-`POST /api/v1/completion` 通过 `get_login_user` 获得用户，按 `dialog_id` 加载 Agent 配置，每次请求创建 `GeneralAgent`。Agent 汇集内置/OpenAPI 工具、MCP 子 Agent、Skill 子 Agent及可选知识库检索工具，用 `langchain.agents.create_agent` 构建执行图。
+`POST /api/v1/completion` 通过 `get_login_user` 获得用户，检查对话所有权后按 `dialog_id` 加载 Agent 配置，每次请求创建 `GeneralAgent`。Agent 汇集内置/OpenAPI 工具、MCP 子 Agent、Skill 子 Agent及可选知识库检索工具，用 `langchain.agents.create_agent` 构建执行图。
 
 输入由系统提示词、短期历史、已有对话摘要、可选长期记忆和本次用户内容组成。用户消息先写入 `history`，模型/工具执行的事件及文本通过 SSE 返回。流生成器的 `finally` 尝试写回长期记忆、助手历史和对话摘要；这一串操作不构成跨 MySQL、向量库与模型服务的原子事务。
 
@@ -79,7 +87,7 @@ Jev 是可选外部决策层：工作台调用工具前使用 `should_run_tools(
 
 检索由 `RagHandler` 组合查询改写、向量/可选全文检索、去重、重排和过滤。`rag.vector_db.mode` 分派到 Chroma、`lite` 或 Milvus 实现；`milvus_client` 是兼容变量名，并不代表当前一定使用 Milvus。`lite` 分支的实现仍有按 host/port 建立连接的代码，不能仅凭名称认定为无服务嵌入式存储。Chunk 浏览、向量查看和导出当前仅支持 Chroma。
 
-长期记忆由独立 `services/memory` 实现，当前 `AsyncMemory` 固定选择 Chroma 保存记忆，不跟随 RAG 的存储模式切换；MySQL `memory_history` 记录变更。Graph 记忆当前关闭。普通会话用 `run_id=dialog_id` 搜索和写入，不应泛化为已经实现跨会话的用户级共享记忆。
+长期记忆由独立 `services/memory` 实现，当前 `AsyncMemory` 固定选择 Chroma 保存记忆，不跟随 RAG 的存储模式切换；MySQL `memory_history` 记录变更。Graph 记忆当前关闭。普通旧会话用 `run_id=dialog_id`；CONV-001 的新智能体日常会话使用 `workspace:{user_id}:{session_id}` 命名空间，避免客户端提供的 session ID 与其他用户或旧对话记忆碰撞。未迁移既有记忆，也不表示已经实现跨会话的用户级共享记忆。
 
 ### MCP 的两个方向
 

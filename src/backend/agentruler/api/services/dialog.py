@@ -1,4 +1,5 @@
 from loguru import logger
+from fastapi import HTTPException
 
 from agentruler.api.services.agent import AgentService
 from agentruler.core.callbacks import usage_metadata_callback
@@ -73,8 +74,10 @@ class DialogService:
     async def verify_user_permission(cls, dialog_id: str, user_id: str):
         """Verify user has permission to access dialog"""
         dialog = await DialogDao.get_agent_by_dialog_id(dialog_id=dialog_id)
-        if user_id not in (AdminUser, dialog.user_id):
-            raise ValueError(f"没有权限访问")
+        if dialog is None:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        if user_id != dialog.user_id:
+            raise HTTPException(status_code=403, detail="没有权限访问该会话")
 
     @classmethod
     async def get_dialog_history_summary(cls, dialog_id):

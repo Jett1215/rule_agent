@@ -360,7 +360,7 @@ class GeneralAgent:
             }
 
 
-    async def astream(self, messages: List[BaseMessage]) -> AsyncGenerator[Dict[str, Any], None]:
+    async def astream(self, messages: List[BaseMessage], *, raise_on_error: bool = False) -> AsyncGenerator[Dict[str, Any], None]:
         """流式调用主方法"""
         response_content = ""
         try:
@@ -384,6 +384,8 @@ class GeneralAgent:
 
         # 针对模型回复进行兜底操作，错误类型包括：敏感词，模型问题
         except Exception as err:
+            if raise_on_error:
+                raise
             logger.error(f"LLM Model Error: {err}")
             yield {
                 "type": "response_chunk",

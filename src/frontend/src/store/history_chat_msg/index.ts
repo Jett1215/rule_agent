@@ -22,12 +22,14 @@ export const useHistoryChatStore = defineStore('history_chat_msg', () => {
   const logo = ref('')
   const loading = ref(false)
   const error = ref('')
+  let historyLoadVersion = 0
 
   /**
    * 获取历史聊天记录
    * @param id 对话ID
    */
   async function HistoryChat(id: string) {
+    const version = ++historyLoadVersion
     console.log('【HistoryChat】开始获取历史消息，dialog_id:', id)
     chatArr.value = [] // 清空现有消息
     loading.value = true
@@ -35,7 +37,7 @@ export const useHistoryChatStore = defineStore('history_chat_msg', () => {
     
     try {
       const response = await getHistoryMsgAPI(id)
-      console.log('【HistoryChat】历史消息API返回:', response.data)
+      if (version !== historyLoadVersion) return
       
       if (response.data.status_code === 200 && Array.isArray(response.data.data)) {
         const messages = response.data.data
@@ -144,18 +146,19 @@ export const useHistoryChatStore = defineStore('history_chat_msg', () => {
           chatArr.value.push(chatMsg)
         }
         
-        console.log('【HistoryChat】处理后的消息数组:', chatArr.value)
+
       } else {
-        console.error('【HistoryChat】API返回错误:', response.data)
+        console.error('获取历史消息失败')
         error.value = '获取历史消息失败'
         ElMessage.error('获取历史消息失败')
       }
     } catch (err) {
-      console.error('【HistoryChat】获取历史消息出错:', err)
+      if (version !== historyLoadVersion) return
+      console.error('获取历史消息失败')
       error.value = '获取历史消息出错'
       ElMessage.error('获取历史消息出错，请重试')
     } finally {
-      loading.value = false
+      if (version === historyLoadVersion) loading.value = false
     }
   }
   
@@ -163,6 +166,7 @@ export const useHistoryChatStore = defineStore('history_chat_msg', () => {
    * 清空聊天记录
    */
   function clear() {
+    ++historyLoadVersion
     chatArr.value = []
     error.value = ''
   }

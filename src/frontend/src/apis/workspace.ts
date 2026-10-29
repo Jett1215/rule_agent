@@ -1,5 +1,6 @@
 import { request } from '../utils/request'
 import { fetchEventSource } from '@microsoft/fetch-event-source'
+import { parseWorkspaceStreamMessage, type AgentProgressEvent } from '../utils/workspace-stream'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
@@ -54,6 +55,7 @@ export interface WorkSpaceSimpleTask {
   plugins: string[]
   mcp_servers: string[]
   session_id?: string  // 会话ID，使用uuid4().hex格式
+  agent_id?: string | null
 }
 
 export interface McpToolEvent {
@@ -74,22 +76,18 @@ export const workspaceSimpleChatAPI = async (data: WorkSpaceSimpleTask) => {
   })
 }
 
-// 工作区日常对话（SSE 流式）
+// 工作区日常对话（SSE 流式）；HTTP/业务错误终止，不自动重试生成请求。
 export const workspaceSimpleChatStreamAPI = async (
   data: WorkSpaceSimpleTask,
   onMessage: (chunk: string) => void,
-  onError?: (err: any) => void,
+  onError?: (err: unknown) => void,
   onClose?: () => void,
   onMcpToolEvent?: (event: McpToolEvent) => void,
-  onReasoningChunk?: (chunk: string) => void
+  onReasoningChunk?: (chunk: string) => void,
+  options: { signal?: AbortSignal; onAgentEvent?: (event: AgentProgressEvent) => void } = {}
 ) => {
   const token = localStorage.getItem('token')
-  const ctrl = new AbortController()
-
-  console.log('=== workspaceSimpleChatStreamAPI 调用 ===')
-  console.log('请求参数:', data)
-  console.log('请求 URL:', `${BASE_URL}/api/v1/workspace/simple/chat`)
-
+  let completed = false
   try {
     await fetchEventSource(`${BASE_URL}/api/v1/workspace/simple/chat`, {
       method: 'POST',
@@ -98,61 +96,39 @@ export const workspaceSimpleChatStreamAPI = async (
         'Authorization': token ? `Bearer ${token}` : ''
       },
       body: JSON.stringify(data),
-      signal: ctrl.signal,
+      signal: options.signal,
       openWhenHidden: true,
-      onmessage(event) {
-        console.log('📨 收到 SSE 原始消息:', event.data)
-        if (!event.data) return
-        try {
-          const parsed = JSON.parse(event.data)
-          console.log('📦 解析后的数据:', parsed)
-          if (parsed?.event === 'mcp_tool') {
-            onMcpToolEvent?.(parsed.data as McpToolEvent)
-            return
-          }
-          if (parsed?.event === 'reasoning_chunk') {
-            if (typeof parsed.data?.chunk === 'string' && parsed.data.chunk) {
-              onReasoningChunk?.(parsed.data.chunk)
-            }
-            return
-          }
-          // 兼容后端返回 {event:'task_result', data:{message}} 或 {data:{chunk}}
-          if (parsed?.data?.message !== undefined) {
-            // 只有当 message 不为空字符串时才调用回调
-            if (parsed.data.message !== '') {
-              console.log('📝 提取 message:', parsed.data.message)
-              onMessage(parsed.data.message)
-            } else {
-              console.log('⏭️ 跳过空 message')
-            }
-          } else if (parsed?.data?.chunk !== undefined) {
-            if (parsed.data.chunk !== '') {
-              console.log('📝 提取 chunk:', parsed.data.chunk)
-              onMessage(parsed.data.chunk)
-            } else {
-              console.log('⏭️ 跳过空 chunk')
-            }
-          } else {
-            console.warn('⚠️ 未识别的数据格式，跳过')
-          }
-        } catch (_) {
-          console.warn('⚠️ JSON 解析失败，跳过:', event.data)
+      async onopen(response) {
+        if (!response.ok) {
+          throw new Error(response.status === 403 ? '没有权限使用该会话或所选资源' : `对话请求失败（${response.status}）`)
+        }
+        if (!response.headers.get('content-type')?.includes('text/event-stream')) {
+          throw new Error('对话服务未返回有效的数据流')
         }
       },
-      onerror(err) {
-        console.error('❌ SSE 错误:', err)
-        onError?.(err)
-        ctrl.abort()
+      onmessage(event) {
+        const message = parseWorkspaceStreamMessage(event.data)
+        switch (message.kind) {
+          case 'text': onMessage(message.text); break
+          case 'reasoning': onReasoningChunk?.(message.text); break
+          case 'mcp': onMcpToolEvent?.(message.data as unknown as McpToolEvent); break
+          case 'agent': options.onAgentEvent?.(message.data); break
+          case 'done': completed = true; break
+        }
+      },
+      onerror(error) {
+        // Throwing prevents fetch-event-source from replaying a POST after failure.
+        throw error
       },
       onclose() {
-        console.log('✅ SSE 连接关闭')
+        if (!completed) throw new Error('连接已中断，本轮回复可能未保存，请重试')
         onClose?.()
       }
     })
-  } catch (error: any) {
-    console.error('❌ fetchEventSource 异常:', error)
-    if (error?.name !== 'AbortError') {
+  } catch (error) {
+    if (!options.signal?.aborted) {
       onError?.(error)
+      throw error
     }
   }
 }

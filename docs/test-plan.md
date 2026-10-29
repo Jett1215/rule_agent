@@ -25,6 +25,8 @@
 | TEST-JEV-001 | REQ-010 | `python -m unittest agentruler.test.test_jev_decisions` | 门控、候选筛选、共用 `JEV_MODE` 与 YAML 优先级、空白/非法值、独立开关、禁用/观察/回退、用量与日志；Mock TypeSafe 请求 |
 | TEST-JEV-002 | REQ-010 | `python -m unittest agentruler.test.test_jev_middleware` | 按轮筛选、原注册工具集保持、非法候选与回退 |
 | TEST-JEV-003 | REQ-007、REQ-010 | `python -m unittest agentruler.test.test_jev_workspace` | 工作台工具路径、上下文、事件与最终回答；隔离数据库和插件 |
+| TEST-CONV-BE | REQ-011 | `python -m unittest agentruler.test.test_workspace_chat` | 会话默认与覆盖、JSON 保存、Agent 不变、关联资源权限、旧对话权限、错误/取消与完成标记；桩隔离外部服务，FastAPI ASGI 接口，不启动正式 lifespan |
+| TEST-CONV-FE | REQ-011 | 前端目录 `npm test` | 混合历史/排序/旧路由、旧历史竞争、Agent 配置继承/恢复、日常与 LingSeek/旧对话 SSE 契约和取消；不代表真实服务集成 |
 
 测试文件位于[后端测试目录](../src/backend/agentruler/test/)与[前端测试目录](../src/frontend/tests/)。Jev 三组文件在文档整理开始时为未跟踪工作区内容。
 
@@ -39,6 +41,8 @@ npm run build
 ```
 
 `lint` 实际为 `vue-tsc --noEmit` 类型检查，没有因此提供 ESLint 或代码格式检查。`vite build` 成功也不能替代类型检查、页面行为或 API 集成验证。前端路由、SSE 解析和数据契约变化需增加相应人工或端到端回归。
+
+CONV-001 发现上述 lint 脚本在当前根 TS references 下不遍历应用。应用类型检查应显式执行 `./node_modules/.bin/vue-tsc --noEmit -p tsconfig.app.json`；目前任务前基线有 24 项历史诊断，应对照基线并记录 FAIL，不能将脚本退出 0 写成全量类型通过。会话模块浏览器验证可使用临时自托管构建产物及同源 Mock API，覆盖界面和流生命周期，同时明确未访问真实后端、数据库、模型或 MCP。
 
 后端当前没有在 `pyproject.toml` 声明统一 Ruff、Mypy、Pytest 配置或测试依赖组。需要接入时作为单独工程任务评估，不写成当前已具备的门禁。
 

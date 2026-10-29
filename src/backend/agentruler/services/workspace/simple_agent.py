@@ -79,7 +79,8 @@ class WorkSpaceSimpleAgent:
                  user_id: str,
                  session_id: str,
                  plugins: List[str] = [],
-                 mcp_configs: List[MCPConfig] = []):
+                 mcp_configs: List[MCPConfig] = [],
+                 chat_config: dict | None = None):
 
         # Simple-agent only needs tool calling model, not conversation model
         self.model = ModelManager.get_user_model(preserve_reasoning=True, **model_config)
@@ -90,6 +91,7 @@ class WorkSpaceSimpleAgent:
         self.mcp_manager = MCPManager(convert_mcp_config([mcp_config.model_dump() for mcp_config in mcp_configs]))
         self.plugins = plugins
         self.session_id = session_id
+        self.chat_config = chat_config
 
         self.user_id = user_id
         self.jev_decisions = JevDecisionService()
@@ -277,7 +279,8 @@ class WorkSpaceSimpleAgent:
         if session:
             await WorkSpaceSessionService.update_workspace_session_contexts(
                 session_id=self.session_id,
-                session_context=contexts.model_dump()
+                session_context=contexts.model_dump(),
+                user_id=self.user_id,
             )
         else:
             await WorkSpaceSessionService.create_workspace_session(
@@ -294,96 +297,106 @@ class WorkSpaceSimpleAgent:
         user_messages = copy.deepcopy(messages)
 
         generate_title_task = asyncio.create_task(self._generate_title(user_messages[-1].content))
-        mcp_tool_calls = []
-        reasoning_text = ""
-        tool_messages = []
         try:
-            react_agent_task = None
-            if self.tools and await self.jev_decisions.should_run_tools(user_messages, self.tools):
-                tool_event_queue = asyncio.Queue()
-                self._tool_event_queue = tool_event_queue
+            mcp_tool_calls = []
+            reasoning_text = ""
+            tool_messages = []
+            try:
+                react_agent_task = None
+                if self.tools and await self.jev_decisions.should_run_tools(user_messages, self.tools):
+                    tool_event_queue = asyncio.Queue()
+                    self._tool_event_queue = tool_event_queue
 
-                async def run_tool_agent():
-                    try:
-                        result = None
-                        async for mode, data in self.react_agent.astream(
-                            input={"messages": messages},
-                            config={"callbacks": [usage_metadata_callback]},
-                            stream_mode=["messages", "values"]
-                        ):
-                            if mode == "messages":
-                                message_chunk, _ = data
-                                reasoning = message_chunk.additional_kwargs.get("reasoning_content")
-                                if isinstance(reasoning, str) and reasoning:
-                                    tool_event_queue.put_nowait({
-                                        "event": "reasoning_chunk", "data": {"chunk": reasoning}
-                                    })
-                            elif mode == "values":
-                                result = data
-                        return result
-                    finally:
-                        tool_event_queue.put_nowait(None)
+                    async def run_tool_agent():
+                        try:
+                            result = None
+                            async for mode, data in self.react_agent.astream(
+                                input={"messages": messages},
+                                config={"callbacks": [usage_metadata_callback]},
+                                stream_mode=["messages", "values"]
+                            ):
+                                if mode == "messages":
+                                    message_chunk, _ = data
+                                    reasoning = message_chunk.additional_kwargs.get("reasoning_content")
+                                    if isinstance(reasoning, str) and reasoning:
+                                        tool_event_queue.put_nowait({
+                                            "event": "reasoning_chunk", "data": {"chunk": reasoning}
+                                        })
+                                elif mode == "values":
+                                    result = data
+                            return result
+                        finally:
+                            tool_event_queue.put_nowait(None)
 
-                react_agent_task = asyncio.create_task(run_tool_agent())
+                    react_agent_task = asyncio.create_task(run_tool_agent())
 
-            # Wait for tool execution to complete
-            if react_agent_task:
-                while (event := await tool_event_queue.get()) is not None:
-                    if event["event"] == "reasoning_chunk":
-                        reasoning_text += event["data"]["chunk"]
-                    else:
-                        event_data = event["data"]
-                        if event_data["status"] == "START":
-                            mcp_tool_calls.append(event_data.copy())
+                # Wait for tool execution to complete
+                if react_agent_task:
+                    while (event := await tool_event_queue.get()) is not None:
+                        if event["event"] == "reasoning_chunk":
+                            reasoning_text += event["data"]["chunk"]
                         else:
-                            for tool_call in reversed(mcp_tool_calls):
-                                if tool_call["id"] == event_data["id"]:
-                                    tool_call["status"] = event_data["status"]
-                                    break
-                    yield event
+                            event_data = event["data"]
+                            if event_data["status"] == "START":
+                                mcp_tool_calls.append(event_data.copy())
+                            else:
+                                for tool_call in reversed(mcp_tool_calls):
+                                    if tool_call["id"] == event_data["id"]:
+                                        tool_call["status"] = event_data["status"]
+                                        break
+                        yield event
 
-                results = await react_agent_task
-                result_messages = results["messages"][:-1]  # Remove the tool agent's final text.
+                    results = await react_agent_task
+                    result_messages = results["messages"][:-1]  # Remove the tool agent's final text.
 
-                tool_messages = [msg for msg in result_messages if
-                            isinstance(msg, ToolMessage) or (isinstance(msg, AIMessage) and msg.tool_calls)]
-        except Exception as err:
-            raise ValueError from err
+                    tool_messages = [msg for msg in result_messages if
+                                isinstance(msg, ToolMessage) or (isinstance(msg, AIMessage) and msg.tool_calls)]
+            except Exception as err:
+                raise ValueError from err
+            finally:
+                if react_agent_task is not None and not react_agent_task.done():
+                    react_agent_task.cancel()
+                    await asyncio.gather(react_agent_task, return_exceptions=True)
+                self._tool_event_queue = None
+            messages = user_messages + tool_messages
+
+            final_answer = ""
+            async for chunk in self.model.astream(input=messages, config={"callbacks": [usage_metadata_callback]}):
+                reasoning = chunk.additional_kwargs.get("reasoning_content")
+                if isinstance(reasoning, str) and reasoning:
+                    reasoning_text += reasoning
+                    yield {
+                        "event": "reasoning_chunk",
+                        "data": {"chunk": reasoning}
+                    }
+
+                if isinstance(chunk.content, str) and chunk.content:
+                    yield {
+                        "event": "task_result",
+                        "data": {"message": chunk.content}
+                    }
+                    final_answer += chunk.content
+
+            if not final_answer:
+                raise ValueError("Empty model response")
+
+            await generate_title_task
+            title = generate_title_task.result() if generate_title_task.done() else None
+
+            await self._add_workspace_session(
+                title=title,
+                contexts=WorkSpaceSessionContext(
+                    query=user_messages[-1].content,
+                    mcp_tool_calls=mcp_tool_calls,
+                    reasoning=reasoning_text,
+                    answer=final_answer,
+                    config=getattr(self, "chat_config", None)
+                ))
+
         finally:
-            if react_agent_task is not None and not react_agent_task.done():
-                react_agent_task.cancel()
-            self._tool_event_queue = None
-        messages = user_messages + tool_messages
-
-        final_answer = ""
-        async for chunk in self.model.astream(input=messages, config={"callbacks": [usage_metadata_callback]}):
-            reasoning = chunk.additional_kwargs.get("reasoning_content")
-            if isinstance(reasoning, str) and reasoning:
-                reasoning_text += reasoning
-                yield {
-                    "event": "reasoning_chunk",
-                    "data": {"chunk": reasoning}
-                }
-
-            if isinstance(chunk.content, str) and chunk.content:
-                yield {
-                    "event": "task_result",
-                    "data": {"message": chunk.content}
-                }
-                final_answer += chunk.content
-
-        await generate_title_task
-        title = generate_title_task.result() if generate_title_task.done() else None
-
-        await self._add_workspace_session(
-            title=title,
-            contexts=WorkSpaceSessionContext(
-                query=user_messages[-1].content,
-                mcp_tool_calls=mcp_tool_calls,
-                reasoning=reasoning_text,
-                answer=final_answer
-            ))
-
+            if not generate_title_task.done():
+                generate_title_task.cancel()
+            await asyncio.gather(generate_title_task, return_exceptions=True)
 
     async def _record_agent_token_usage(self, response: AIMessage | AIMessageChunk | BaseMessage, model):
         if response.usage_metadata:

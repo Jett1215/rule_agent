@@ -74,6 +74,9 @@ cp src/backend/agentruler/config.example.yaml src/backend/agentruler/config.yaml
 MySQL / Redis 使用独立的 Docker 数据卷，也不会随 Git 提交上传。
 同步代码不能替代数据库备份或迁移，不要用 `docker compose down -v` 清理需要保留的数据。
 
+开发 Compose 的向量与记忆目录分别为 `docker/data/vector_db` 和 `docker/data/memory_db`。
+记忆挂载于 2026-10-29 补充；升级旧本地容器前先停止后端并提取其 `/app/memory_db`，确认备份和目标目录后再替换容器，避免空目录遮住已有数据。具体更新边界见 [Docker 指南](../docker/README.md#持久化与更新边界)。
+
 ## 提交代码
 
 ```bash

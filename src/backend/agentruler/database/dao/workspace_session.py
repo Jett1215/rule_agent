@@ -35,9 +35,18 @@ class WorkSpaceSessionDao:
             await session.commit()
 
     @classmethod
-    async def update_workspace_session_contexts(cls, session_id, session_context):
+    async def update_workspace_session_contexts(cls, session_id, session_context, user_id=None):
         async with async_session_getter() as session:
-            workspace_session = await session.get(WorkSpaceSession, session_id)
+            # Keep ownership validation and the JSON append in one locked transaction.
+            statement = select(WorkSpaceSession).where(
+                WorkSpaceSession.session_id == session_id
+            ).with_for_update()
+            result = await session.exec(statement)
+            workspace_session = result.first()
+            if workspace_session is None:
+                raise LookupError("会话不存在")
+            if user_id is not None and workspace_session.user_id != user_id:
+                raise PermissionError("没有权限访问该会话")
             new_contexts = workspace_session.contexts.copy()
             new_contexts.append(session_context)
             workspace_session.contexts = new_contexts  # 重新赋值

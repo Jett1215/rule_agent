@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from agentruler.core.agents.general_agent import GeneralAgent, AgentConfig
 from agentruler.api.services.history import HistoryService
 from agentruler.api.services.dialog import DialogService
+from agentruler.api.services.workspace_chat import WorkspaceChatService
 from agentruler.api.responses.streaming import WatchedStreamingResponse
 from agentruler.api.services.user import UserPayload, get_login_user
 from agentruler.prompts.completion import SYSTEM_PROMPT
@@ -27,8 +28,11 @@ async def completion(
     实时对话接口（SSE流式）
     """
 
+    await DialogService.verify_user_permission(req.dialog_id, login_user.user_id)
+
     # Agent 初始化
     db_config = await DialogService.get_agent_by_dialog_id(req.dialog_id)
+    await WorkspaceChatService.validate_agent_resources(db_config, login_user.user_id)
     agent_config = AgentConfig(**db_config)
     agent_config.user_id = login_user.user_id
 

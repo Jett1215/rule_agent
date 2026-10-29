@@ -66,6 +66,7 @@ services:
       - ./docker_config.yaml:/app/agentruler/config.yaml:ro
       # ChromaDB 数据保留在宿主机，更新后端容器时继续使用。
       - ./data/vector_db:/app/vector_db
+      - ./data/memory_db:/app/memory_db
 #      - ../src/backend:/app:cached
 #      - ../data:/app/data
 #      - ../logs:/app/logs

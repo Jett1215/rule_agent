@@ -47,12 +47,16 @@ VITE_API_PROXY_TARGET=http://localhost:7860
 
 | 命令 | 实际作用 | 范围与限制 |
 | --- | --- | --- |
-| `npm run lint` | `vue-tsc --noEmit` 类型检查 | 名称是 lint，实际未配置 ESLint 检查 |
-| `npm test` | `node --test tests/*.test.cjs` | 当前仅 `session-id.test.cjs`：原生 UUID 与 HTTP 环境回退生成；使用 TypeScript 转译，不包含页面或端到端测试 |
+| `npm run lint` | `vue-tsc --noEmit` | 当前根 references 配置下不遍历应用源码；未配置 ESLint；实际应用检查见下文 |
+| `npm test` | `node --test tests/*.test.cjs` | UUID、会话历史与路由、配置继承/恢复和 SSE 契约；使用 TypeScript 转译与隔离桩，不包含真实服务端到端测试 |
 | `npm run build` | `vite build`，生成 `dist/` | 构建脚本本身不执行 `vue-tsc`，类型检查需单独运行 |
 | `npm run preview` | 本地预览 `dist/` | Vite 预览默认复用 `server.proxy`；仅供本地检查，不替代生产 Nginx 与真实环境联调 |
 
 发布前应记录所用提交、Node/npm 版本、上述检查结果，并在连通测试后端的环境验证登录、聊天流、工作空间、文件上传和关键管理页面。现有 Node 测试不能证明这些用户流程可用；计划和记录分别维护在 [测试计划](../../docs/test-plan.md) 与 [验证报告](../../docs/verification-report.md)。
+
+2026-10-27 CONV-001 核查：根 `tsconfig.json` 的 `files: []` 与 references 结构使当前 `npm run lint` 不遍历应用源码，退出 0 不能证明应用类型正确。实际应用检查使用 `./node_modules/.bin/vue-tsc --noEmit -p tsconfig.app.json`。任务前 `f3a4ffd` 与本次工作区均存在相同 24 项历史诊断，详见验证报告；本次未扩大修改其他管理页面或更改 lint 脚本。
+
+会话模块主入口为 `/conversation`，`/workspace` 保持兼容。新日常对话可组合模型、工具、MCP 或带入智能体，配置仅作用于本次会话；历史记录聚合两种既有存储，旧智能体对话沿用原配置继续使用，亦可另开可配置的新日常会话。新增定向测试覆盖历史归一化、兼容路由、配置恢复、SSE 错误/完成标记与取消，隔离浏览器测试和真实服务的边界见验证报告。
 
 ## Docker 与生产部署
 

@@ -128,8 +128,10 @@
 | `title` | str | 工作台会话标题 |
 | `agent` | str | 选用的 Agent 标识/名称 |
 | `user_id` | str | 用户标识；未声明索引 |
-| `contexts` | JSON，默认 [] | 结构化工作台上下文；当前请求模型含 query、guide_prompt、task、task_graph、mcp_tool_calls、reasoning、answer 等 |
+| `contexts` | JSON，默认 [] | 结构化工作台上下文；含 query、guide_prompt、task、task_graph、mcp_tool_calls、reasoning、answer，以及 CONV-001 新增的可选 config 和 agent_events |
 | `create_time`、`update_time` | TS | 创建/修改时间 |
+
+CONV-001 的 `contexts[].config` 只存 `agent_id`、`model_id`、`plugins`、`mcp_servers` 标识，不存模型密钥、系统提示词副本或连接凭据。`agent_events` 为智能体工具的安全进度信息。新增内容沿用现有 JSON 列，无表字段变化或迁移；旧上下文缺少配置时，前端提示使用当前默认选择。智能体旧记录继续使用 `dialog/history`，统一列表仅聚合展示与分派，原始数据不移动或覆盖。
 
 ### `message_like`、`message_down` — `models/message.py`
 

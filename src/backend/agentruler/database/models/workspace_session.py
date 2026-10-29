@@ -56,3 +56,5 @@ class WorkSpaceSessionContext(BaseModel):
     mcp_tool_calls: list[dict] = []
     reasoning: str = ""
     answer: str
+    config: dict | None = None
+    agent_events: list[dict] = []

@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class WorkSpaceAgents(Enum):
     LingSeekAgent: str = "lingseek"
@@ -11,8 +11,9 @@ class WorkSpaceAgents(Enum):
 
 
 class WorkSpaceSimpleTask(BaseModel):
-    query: str
-    model_id: str
-    session_id: str
-    plugins: List[str] = []
-    mcp_servers: List[str] = []
+    query: str = Field(min_length=1)
+    model_id: str | None = None
+    session_id: str = Field(min_length=1, max_length=128)
+    plugins: List[str] | None = None
+    mcp_servers: List[str] | None = None
+    agent_id: str | None = None

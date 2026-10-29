@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch, computed } from "vue"
-import { useRoute } from 'vue-router'
+import { ref, onMounted, onBeforeUnmount, nextTick, watch, computed } from "vue"
+import { useRoute, useRouter } from 'vue-router'
 import { MdPreview } from "md-editor-v3"
 import "md-editor-v3/lib/style.css"
+import type { ChatMessage } from "../../../type"
 import { sendMessage, type Chat } from "../../../apis/chat"
 import { useHistoryChatStore } from "../../../store/history_chat_msg"
 import { useUserStore } from "../../../store/user"
@@ -38,6 +39,13 @@ const historyChatStore = useHistoryChatStore()
 const userStore = useUserStore()
 const scrollbar = ref<InstanceType<typeof ElScrollbar>>()
 const route = useRoute()
+const router = useRouter()
+let pageActive = true
+let streamVersion = 0
+const newConfiguredConversation = () => router.push({
+  name: 'workspaceDefaultPage',
+  query: { mode: 'normal', ...(typeof route.query.agent_id === 'string' ? { agent_id: route.query.agent_id } : {}) },
+})
 const abortCtrl = ref<AbortController | null>(null)
 const isCancelled = ref(false)
 // 标记是否有正在进行的事件
@@ -110,15 +118,12 @@ const clearEventStatus = () => {
 }
 
 // 处理事件状态更新
-const handleEventStatus = (parsedData: any) => {
+const handleEventStatus = (parsedData: any, lastChat: ChatMessage) => {
   const { data } = parsedData
   
   // 确保事件有title字段，如果没有则使用event_type或默认值
   const eventId = data.title || data.event_type || "event"
   const { status, message } = data
-  
-  // 获取最后一条AI消息
-  const lastChat = historyChatStore.chatArr[historyChatStore.chatArr.length - 1]
   
   // 初始化eventInfo数组（如果不存在）
   if (!lastChat.eventInfo) {
@@ -172,6 +177,7 @@ const handleEventStatus = (parsedData: any) => {
 
 // Function to handle sending a message
 const personQuestion = async () => {
+  if (!pageActive || historyChatStore.loading || historyChatStore.error) return
   if (!historyChatStore.dialogId) {
     ElMessage.error('未获取到会话 ID，请先选择或创建会话')
     return
@@ -180,6 +186,9 @@ const personQuestion = async () => {
     sendQuestion.value = false
     isCancelled.value = false
     hasActiveEvents.value = false
+    const version = ++streamVersion
+    const currentDialog = historyChatStore.dialogId
+    const isCurrentStream = () => pageActive && version === streamVersion && historyChatStore.dialogId === currentDialog
     const currentInput = searchInput.value
     searchInput.value = ""
 
@@ -200,91 +209,63 @@ const personQuestion = async () => {
       data.fileUrl = fileUrl.value
     }
 
-    try {
-      abortCtrl.value = sendMessage(
-        data,
-        (msg: any) => {
-          if (isCancelled.value) {
-            historyChatStore.chatArr[historyChatStore.chatArr.length - 1].aiMessage.content = '已取消本次对话！'
-            return
-          }
-          try {
-            const parsedData = JSON.parse(msg.data)
-            // 移除这些可能含有敏感信息的日志
-            // console.log("---------------------------")
-            // console.log(parsedData.data)
-            
-            if (parsedData.data.tools && Array.isArray(parsedData.data.tools)) {
-              // data.value.tools = parsedData.data.tools // This line was removed from the original file
-            }
-            // 只有当不是response_chunk类型时，才设置整个content
-            if (parsedData.type !== 'response_chunk') {
-              historyChatStore.chatArr[historyChatStore.chatArr.length - 1].aiMessage.content = parsedData.data.content || ''
-            }
-            if (parsedData.data.session_id) {
-              // sessionId.value = parsedData.data.session_id // This line was removed from the original file
-              // sessionStore().updateSessionId(sessionId.value) // This line was removed from the original file
-            }
-            // 处理不同类型的消息
-            if (parsedData.type === 'response_chunk') {
-              // 累加chunk内容而不是替换
-              const lastMessage = historyChatStore.chatArr[historyChatStore.chatArr.length - 1]
-              if (!lastMessage.aiMessage.content) {
-                lastMessage.aiMessage.content = parsedData.data.chunk
-              } else {
-                lastMessage.aiMessage.content += parsedData.data.chunk
-              }
-              scrollBottom()
-              // console.log('【Chunk接收】当前累加内容:', lastMessage.aiMessage.content) // 调试用
-            } else if (parsedData.type === 'event') {
-              // 处理事件消息
-              handleEventStatus(parsedData)
-            } else if (parsedData.type === 'knowledge') {
-              historyChatStore.chatArr.push({
-                personMessage: { content: '' },
-                aiMessage: { content: '[知识库检索结果]\n' + (parsedData.data.message || ''), type: 'knowledge' },
-                eventInfo: []
-              })
-              scrollBottom()
-            } else if (parsedData.type === 'error') {
-              historyChatStore.chatArr.push({
-                personMessage: { content: '' },
-                aiMessage: { content: '[错误]\n' + (parsedData.data.message || ''), type: 'error' },
-                eventInfo: []
-              })
-              scrollBottom()
-            } else if (parsedData.type === 'heartbeat') {
-              // 心跳包可忽略
-            } else {
-              // 其他类型作为普通消息展示
-              historyChatStore.chatArr.push({
-                personMessage: { content: '' },
-                aiMessage: { content: '[系统消息]\n' + JSON.stringify(parsedData.data), type: 'system' },
-                eventInfo: []
-              })
-              scrollBottom()
-            }
-          } catch (error) {
-            console.error('解析消息失败:', error)
-          }
-        },
-        () => {
-          sendQuestion.value = true
-          abortCtrl.value = null
-          hasActiveEvents.value = false
-          // 清空文件URL和文件名
-          fileUrl.value = ""
-          fileName.value = ""
-        }
-      )
-    } catch (error) {
-      ElMessage.error('发送消息失败，请重试')
+    const currentMessage = historyChatStore.chatArr[historyChatStore.chatArr.length - 1]
+    const finishStream = () => {
+      if (!isCurrentStream()) return
       sendQuestion.value = true
       abortCtrl.value = null
       hasActiveEvents.value = false
-      // 清空文件URL和文件名
       fileUrl.value = ""
       fileName.value = ""
+    }
+    const failStream = () => {
+      if (!isCurrentStream()) return
+      const controller = abortCtrl.value
+      currentMessage.aiMessage.content += '\n\n[本轮回答未完成，请重试]'
+      for (const event of currentMessage.eventInfo) {
+        if (event.status === 'START') {
+          event.status = 'ERROR'
+          event.message = '连接中断'
+        }
+      }
+      finishStream()
+      ++streamVersion
+      controller?.abort()
+      ElMessage.error('发送失败或连接中断，请重试')
+      scrollBottom()
+    }
+
+    try {
+      abortCtrl.value = sendMessage(data, (message: any) => {
+        if (!isCurrentStream() || isCancelled.value) return
+        try {
+          const event = JSON.parse(message.data)
+          if (event.type === 'response_chunk' && typeof event.data?.chunk === 'string') {
+            currentMessage.aiMessage.content += event.data.chunk
+          } else if (event.type === 'event' && event.data) {
+            handleEventStatus(event, currentMessage)
+          } else if (event.type === 'knowledge') {
+            historyChatStore.chatArr.push({
+              personMessage: { content: '' },
+              aiMessage: { content: '[知识库检索结果]\n' + (event.data?.message || ''), type: 'knowledge' },
+              eventInfo: [],
+            })
+          } else if (event.type === 'error') {
+            failStream()
+          } else if (typeof event.data?.content === 'string') {
+            currentMessage.aiMessage.content += event.data.content
+          }
+          scrollBottom()
+        } catch {
+          failStream()
+        }
+      }, () => {
+        if (!isCurrentStream()) return
+        finishStream()
+        window.dispatchEvent(new CustomEvent('conversation-updated'))
+      }, failStream)
+    } catch {
+      failStream()
     }
   }
 }
@@ -293,6 +274,7 @@ const stopGeneration = () => {
   if (abortCtrl.value) {
     // console.log('[stopGeneration] 用户点击暂停, abort 请求')
     isCancelled.value = true
+    ++streamVersion
     abortCtrl.value.abort()
     const lastMessage = historyChatStore.chatArr[historyChatStore.chatArr.length - 1]
     if (lastMessage) {
@@ -310,6 +292,13 @@ const toggleEventInfo = (event: EventInfo) => {
   event.show = !event.show
 }
 
+onBeforeUnmount(() => {
+  pageActive = false
+  ++streamVersion
+  abortCtrl.value?.abort()
+  abortCtrl.value = null
+})
+
 // Load history on mount
 onMounted(() => {
   const dialog_id = route.query.dialog_id
@@ -318,6 +307,7 @@ onMounted(() => {
   if (dialog_id) {
     historyChatStore.dialogId = dialog_id as string
     historyChatStore.HistoryChat(dialog_id as string).then(() => {
+        if (!pageActive || historyChatStore.dialogId !== dialog_id) return
         scrollBottom()
         
         // 如果有来自首页的搜索消息，自动发送
@@ -342,8 +332,13 @@ watch(
   () => route.query.dialog_id,
   (newVal, oldVal) => {
     if (newVal && newVal !== oldVal) {
+      ++streamVersion
+      abortCtrl.value?.abort()
+      abortCtrl.value = null
+      sendQuestion.value = true
       historyChatStore.dialogId = newVal as string
       historyChatStore.HistoryChat(newVal as string).then(() => {
+        if (!pageActive || historyChatStore.dialogId !== newVal) return
         scrollBottom()
         
         // 如果有来自首页的搜索消息，自动发送
@@ -372,6 +367,10 @@ watch(
 
 <template>
   <div class="chat-container">
+    <div class="legacy-conversation-header">
+      <div><strong>日常对话</strong><span>此历史会话沿用原智能体配置</span></div>
+      <button @click="newConfiguredConversation">新建可配置会话</button>
+    </div>
     <div class="chat-conversation">
       <el-scrollbar ref="scrollbar">
         <!-- 聊天消息区 -->
@@ -483,6 +482,12 @@ watch(
 </template>
 
 <style lang="scss" scoped>
+.legacy-conversation-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid #ececf0; background: white;
+  strong { font-size: 14px; color: #303039; }
+  span { margin-left: 12px; font-size: 12px; color: #909098; }
+  button { border: 1px solid #dce3ef; background: #f5f8fd; color: #45658d; border-radius: 8px; padding: 8px 12px; cursor: pointer; white-space: nowrap; }
+}
 .chat-container {
   display: flex;
   flex-direction: column;

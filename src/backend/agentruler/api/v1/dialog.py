@@ -1,5 +1,5 @@
 from loguru import logger
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends, Body, HTTPException
 from agentruler.api.services.agent import AgentService
 from agentruler.api.services.dialog import DialogService
 from agentruler.api.services.user import UserPayload, get_login_user
@@ -21,7 +21,12 @@ async def get_dialog(
             message_agent = await AgentService.select_agent_by_id(
                 agent_id=message["agent_id"]
             )
-            message.update(message_agent)
+            if message_agent:
+                # Agent metadata must not overwrite the dialog's title or timestamps.
+                message.update({
+                    "agent_name": message_agent.get("name", ""),
+                    "logo_url": message_agent.get("logo_url", ""),
+                })
             results.append(message)
 
         return resp_200(data=results)
@@ -59,6 +64,8 @@ async def delete_dialog(
 
         await DialogService.delete_dialog(dialog_id=dialog_id)
         return resp_200()
+    except HTTPException:
+        raise
     except Exception as err:
         logger.error(err)
         return resp_500(message=str(err))

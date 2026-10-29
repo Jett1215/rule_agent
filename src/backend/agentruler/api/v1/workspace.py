@@ -1,18 +1,15 @@
 import json
+from contextlib import aclosing
 from fastapi import APIRouter, Depends, HTTPException
-from langchain_core.messages import HumanMessage, SystemMessage
 from starlette.responses import StreamingResponse
 
-from agentruler.api.services.llm import LLMService
-from agentruler.api.services.mcp_server import MCPService
 from agentruler.api.services.tool import ToolService
 from agentruler.api.services.workspace_session import WorkSpaceSessionService
-from agentruler.prompts.completion import SYSTEM_PROMPT
+from agentruler.api.services.workspace_chat import WorkspaceChatService
 from agentruler.api.responses.builder import resp_200
 from agentruler.schemas.usage_stats import UsageStatsAgentType
 from agentruler.schemas.workspace import WorkSpaceSimpleTask
 from agentruler.api.services.user import UserPayload, get_login_user
-from agentruler.services.workspace.simple_agent import WorkSpaceSimpleAgent, MCPConfig
 from agentruler.utils.contexts import set_user_id_context, set_agent_name_context
 
 router = APIRouter(prefix="/workspace", tags=["WorkSpace"])
@@ -39,20 +36,19 @@ async def create_workspace_session(*,
 @router.post("/session/{session_id}", summary="进入工作台会话")
 async def workspace_session_info(session_id: str,
                                  login_user: UserPayload = Depends(get_login_user)):
-    try:
-        result = await WorkSpaceSessionService.get_workspace_session_from_id(session_id, login_user.user_id)
-        return resp_200(data=result)
-    except Exception as err:
-        raise HTTPException(status_code=500, detail=str(err))
+    result = await WorkSpaceSessionService.get_workspace_session_from_id(session_id, login_user.user_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return resp_200(data=result)
 
 @router.delete("/session", summary="删除工作台的会话")
 async def create_workspace_session(session_id: str,
                                    login_user: UserPayload = Depends(get_login_user)):
-    try:
-        await WorkSpaceSessionService.delete_workspace_session([session_id], login_user.user_id)
-        return resp_200()
-    except Exception as err:
-        raise HTTPException(status_code=500, detail=str(err))
+    result = await WorkSpaceSessionService.get_workspace_session_from_id(session_id, login_user.user_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    await WorkSpaceSessionService.delete_workspace_session([session_id], login_user.user_id)
+    return resp_200()
 
 
 @router.post("/simple/chat", summary="工作台日常对话")
@@ -62,39 +58,18 @@ async def workspace_simple_chat(simple_task: WorkSpaceSimpleTask,
     set_user_id_context(login_user.user_id)
     set_agent_name_context(UsageStatsAgentType.simple_agent)
 
-    model_config = await LLMService.get_llm_by_id(simple_task.model_id)
-    servers_config = []
-    for mcp_id in simple_task.mcp_servers:
-        mcp_server = await MCPService.get_mcp_server_from_id(mcp_id)
-        servers_config.append(
-            MCPConfig(**mcp_server)
-        )
-
-    simple_agent = WorkSpaceSimpleAgent(
-        model_config={
-            "model": model_config["model"],
-            "base_url": model_config["base_url"],
-            "api_key": model_config["api_key"],
-            "user_id": login_user.user_id,
-        },
-        mcp_configs=servers_config,
-        plugins=simple_task.plugins,
-        user_id=login_user.user_id,
-        session_id=simple_task.session_id
-    )
-
-    workspace_session = await WorkSpaceSessionService.get_workspace_session_from_id(simple_task.session_id, login_user.user_id)
-    if workspace_session:
-        contexts = workspace_session.get("contexts", [])
-        history_messages = [f"query: {message.get("query")}, answer: {message.get("answer")}\n" for message in contexts]
-    else:
-        history_messages = "无历史对话"
+    prepared = await WorkspaceChatService.prepare(simple_task, login_user.user_id)
 
     async def general_generate():
-        async for chunk in simple_agent.astream([SystemMessage(content=SYSTEM_PROMPT.format(history=str(history_messages))), HumanMessage(content=simple_task.query)]):
-            # chunk 已经是 dict: {"event": "task_result", "data": {"message": "..."}}
-            # 需要 JSON 序列化后作为 SSE 的 data 字段
-            yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+        failed = False
+        async with aclosing(WorkspaceChatService.stream(simple_task, login_user.user_id, prepared)) as stream:
+            async for chunk in stream:
+                # chunk 已经是 dict: {"event": "task_result", "data": {"message": "..."}}
+                # 需要 JSON 序列化后作为 SSE 的 data 字段
+                yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+                failed = failed or chunk.get("event") == "error"
+        if not failed:
+            yield f"data: {json.dumps({'event': 'done', 'data': {'session_id': simple_task.session_id}})}\n\n"
 
     return StreamingResponse(
         general_generate(),

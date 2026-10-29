@@ -1,4 +1,5 @@
 from typing import List
+from fastapi import HTTPException
 
 from agentruler.database.dao.workspace_session import WorkSpaceSession, WorkSpaceSessionDao
 from agentruler.database.models.workspace_session import WorkSpaceSessionCreate
@@ -22,8 +23,13 @@ class WorkSpaceSessionService:
         await WorkSpaceSessionDao.delete_workspace_session(session_ids, user_id)
 
     @classmethod
-    async def update_workspace_session_contexts(cls, session_id, session_context):
-        return await WorkSpaceSessionDao.update_workspace_session_contexts(session_id, session_context)
+    async def update_workspace_session_contexts(cls, session_id, session_context, user_id=None):
+        try:
+            return await WorkSpaceSessionDao.update_workspace_session_contexts(session_id, session_context, user_id)
+        except PermissionError:
+            raise HTTPException(status_code=403, detail="没有权限访问该会话") from None
+        except LookupError:
+            raise HTTPException(status_code=404, detail="会话不存在") from None
 
     @classmethod
     async def clear_workspace_session_contexts(cls, session_id):
@@ -34,6 +40,8 @@ class WorkSpaceSessionService:
         result = await WorkSpaceSessionDao.get_workspace_session_from_id(session_id)
         if result is None:
             return None
+        if result.user_id != user_id:
+            raise HTTPException(status_code=403, detail="没有权限访问该会话")
         return result.to_dict()
 
     @classmethod

@@ -4,7 +4,7 @@
   <div class="notFound">
     <div class="error-code">404</div>
     <div class="text">未找到该页面</div>
-    <router-link to="/workspace" class="back-link">返回工作台</router-link>
+    <router-link to="/conversation" class="back-link">返回会话模块</router-link>
   </div>
 </template>
 

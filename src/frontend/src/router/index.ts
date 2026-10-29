@@ -3,8 +3,6 @@ import { createRouter, createWebHistory } from 'vue-router';
 import ChatPage from '../pages/conversation/chatPage/chatPage.vue';
 import NotFound from '../pages/notFound/index';
 import Index from '../pages/index.vue'
-import conversation from '../pages/conversation/conversation.vue';
-import DefaultPage from '../pages/conversation/defaultPage/defaultPage.vue';
 import Construct from '../pages/construct';
 import Configuration from '../pages/configuration'
 import Login from '../pages/login'
@@ -47,16 +45,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/workspace/taskGraph',
+    path: '/conversation/taskGraph',
+    alias: '/workspace/taskGraph',
     name: 'taskGraphPage',
     component: TaskGraphPage,
     meta: {
+      current: 'conversation',
       requiresAuth: true
     }
   },
   {
     path: '/',
-    redirect: '/workspace',
+    redirect: '/conversation',
     name: 'index',
     component: Index,
     meta: {
@@ -64,12 +64,13 @@ const routes: RouteRecordRaw[] = [
     },
     children: [
       {
-        path: '/workspace',
-        name: 'workspace',
+        path: '/conversation',
+        alias: '/workspace',
+        name: 'conversation',
         component: Workspace,
         meta: {
           requiresAuth: true,
-          current: 'workspace'
+          current: 'conversation'
         },
         children: [
           {
@@ -81,6 +82,11 @@ const routes: RouteRecordRaw[] = [
             path: 'workspacePage',
             name: 'workspacePage',
             component: WorkspacePage,
+          },
+          {
+            path: 'chatPage',
+            name: 'chatPage',
+            component: ChatPage,
           }
         ]
       },
@@ -91,26 +97,6 @@ const routes: RouteRecordRaw[] = [
         meta: {
           current: 'homepage'
         }
-      },
-      {
-        path: '/conversation',
-        name: 'conversation',
-        component: conversation,
-        meta: {
-          current: 'conversation'
-        },
-        children: [
-          {
-            path: '/conversation/',
-            name: 'defaultPage',
-            component: DefaultPage,
-          },
-          {
-            path: '/conversation/chatPage',
-            name: 'chatPage',
-            component: ChatPage,
-          }
-        ]
       },
       {
         path: '/construct',
